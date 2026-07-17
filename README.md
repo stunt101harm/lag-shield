@@ -22,13 +22,15 @@ Dependencies point inward: apps may use packages; `core` never imports an app or
 external transport. Live and historical sources will implement the same normalized event
 contract so recorded inputs can reproduce decisions exactly.
 
+See [the domain model and event-store contract](docs/domain-model.md) for canonical event
+identity, replay ordering, PostgreSQL transaction boundaries, and schema evolution rules.
+
 ## Quick start
 
 ```bash
 cp .env.example .env
 docker compose up -d postgres
 pnpm install
-pnpm db:generate
 pnpm db:migrate
 pnpm dev
 ```
@@ -63,7 +65,8 @@ pnpm check
 ```
 
 This runs formatting checks, ESLint, strict TypeScript, unit tests, and production builds
-through Turborepo. CI runs the same command from a frozen lockfile.
+through Turborepo. CI runs the same command from a frozen lockfile with PostgreSQL 17, so
+the migration and restart-safety integration tests cannot silently skip.
 
 ## Project plan
 

@@ -18,6 +18,22 @@ jobs:
     name: Quality gates
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: lagshield_test
+          POSTGRES_PASSWORD: lagshield
+          POSTGRES_USER: lagshield
+        options: >-
+          --health-cmd "pg_isready -U lagshield -d lagshield_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      TEST_DATABASE_URL: postgresql://lagshield:lagshield@localhost:5432/lagshield_test
 
     steps:
       - name: Check out repository

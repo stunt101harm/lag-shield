@@ -27,6 +27,7 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@lagshield/core": "workspace:*",
     "@solana/web3.js": "^1.98.4",
     "tweetnacl": "^1.0.3",
     "zod": "^4.3.6"

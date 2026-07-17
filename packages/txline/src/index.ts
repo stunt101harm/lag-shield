@@ -4,6 +4,7 @@ export * from './config.js';
 export * from './credentials.js';
 export * from './errors.js';
 export * from './network.js';
+export * from './raw.js';
 export * from './redact.js';
 export * from './schemas.js';
 export * from './subscription.js';
