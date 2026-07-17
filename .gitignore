@@ -1,0 +1,29 @@
+# Dependencies and build output
+node_modules/
+.next/
+.turbo/
+coverage/
+dist/
+*.tsbuildinfo
+
+# Local environment and runtime state
+.env
+.env.*
+!.env.example
+*.log
+*.pid
+
+# Wallets and credentials
+_keys/
+*.keypair.json
+wallet*.json
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# Local database state
+*.db
+*.db-shm
+*.db-wal

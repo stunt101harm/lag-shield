@@ -1,0 +1,38 @@
+import { z } from 'zod';
+
+const nodeEnvironmentSchema = z.enum(['development', 'test', 'production']);
+const logLevelSchema = z.enum([
+  'fatal',
+  'error',
+  'warn',
+  'info',
+  'debug',
+  'trace',
+  'silent',
+]);
+
+export const agentEnvironmentSchema = z.object({
+  NODE_ENV: nodeEnvironmentSchema.default('development'),
+  HOST: z.string().min(1).default('0.0.0.0'),
+  PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
+  LOG_LEVEL: logLevelSchema.default('info'),
+  DATABASE_URL: z.string().url().startsWith('postgres'),
+});
+
+export type AgentEnvironment = z.infer<typeof agentEnvironmentSchema>;
+
+export function parseAgentEnvironment(
+  input: NodeJS.ProcessEnv | Record<string, string | undefined>,
+): AgentEnvironment {
+  const result = agentEnvironmentSchema.safeParse(input);
+
+  if (!result.success) {
+    const details = result.error.issues
+      .map((issue) => `${issue.path.join('.') || 'environment'}: ${issue.message}`)
+      .join('; ');
+
+    throw new Error(`Invalid agent environment: ${details}`);
+  }
+
+  return result.data;
+}
