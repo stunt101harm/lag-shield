@@ -72,14 +72,103 @@ const lowerScoreStatSchema = z
   .object({ key: z.number().int(), period: z.number().int(), value: z.number().int() })
   .loose();
 
+const soccerActionDetailsSchema = z
+  .object({
+    Action: z.string().min(1).optional(),
+    Goal: z.boolean().optional(),
+    Id: z.number().int().optional(),
+    Outcome: z.string().min(1).optional(),
+    Penalty: z.boolean().optional(),
+    RedCard: z.boolean().optional(),
+    Reliable: z.boolean().optional(),
+    Type: z.string().min(1).optional(),
+    VAR: z.boolean().optional(),
+  })
+  .loose();
+
+const soccerPossiblePartyEventSchema = z
+  .object({
+    Corner: z.boolean().optional(),
+    Goal: z.boolean().optional(),
+    Penalty: z.boolean().optional(),
+  })
+  .loose();
+const soccerPartyStateSchema = z
+  .object({ PossibleEvent: soccerPossiblePartyEventSchema.optional() })
+  .loose();
+const soccerPossibleNeutralEventSchema = z
+  .object({
+    RedCard: z.boolean().optional(),
+    VAR: z.boolean().optional(),
+    YellowCard: z.boolean().optional(),
+  })
+  .loose();
+
+function mergeSoccerActionDetails(input: {
+  readonly data: z.infer<typeof soccerActionDetailsSchema> | undefined;
+  readonly neutral: z.infer<typeof soccerPossibleNeutralEventSchema> | undefined;
+  readonly participant1: z.infer<typeof soccerPartyStateSchema> | undefined;
+  readonly participant2: z.infer<typeof soccerPartyStateSchema> | undefined;
+}): z.infer<typeof soccerActionDetailsSchema> | undefined {
+  if (!input.data && !input.neutral && !input.participant1 && !input.participant2) {
+    return undefined;
+  }
+  return {
+    ...input.data,
+    Goal:
+      input.data?.Goal ??
+      input.participant1?.PossibleEvent?.Goal ??
+      input.participant2?.PossibleEvent?.Goal,
+    Penalty:
+      input.data?.Penalty ??
+      input.participant1?.PossibleEvent?.Penalty ??
+      input.participant2?.PossibleEvent?.Penalty,
+    RedCard: input.data?.RedCard ?? input.neutral?.RedCard,
+    VAR: input.data?.VAR ?? input.neutral?.VAR,
+  };
+}
+
+const soccerPhaseIds = {
+  A: 15,
+  C: 16,
+  ET1: 7,
+  ET2: 9,
+  F: 5,
+  FET: 10,
+  FPE: 13,
+  H1: 2,
+  H2: 4,
+  HT: 3,
+  HTET: 8,
+  I: 14,
+  NS: 1,
+  P: 19,
+  PE: 12,
+  TXCC: 17,
+  TXCS: 18,
+  WET: 6,
+  WPE: 11,
+} as const;
+
+function soccerPhaseId(value: number | string | undefined): number | undefined {
+  if (typeof value === 'number') return value;
+  if (value === undefined) return undefined;
+  return soccerPhaseIds[value.trim().toUpperCase() as keyof typeof soccerPhaseIds];
+}
+
 const upperTxLineScoreSchema = z
   .object({
     Action: z.string().min(1),
+    Confirmed: z.boolean().optional(),
+    Data: soccerActionDetailsSchema.optional(),
     FixtureId: z.number().int(),
+    FollowsAction: z.number().int().optional(),
+    Id: z.number().int().optional(),
     Period: z.number().int().nullable().optional(),
     Seq: z.number().int().nonnegative(),
     Stats: z.array(z.union([upperScoreStatSchema, lowerScoreStatSchema])).default([]),
     StatusId: z.number().int().nullable().optional(),
+    StatusSoccerId: z.union([z.number().int(), z.string().min(1)]).optional(),
     Ts: z.number().int().nonnegative(),
   })
   .loose();
@@ -87,8 +176,15 @@ const upperTxLineScoreSchema = z
 const lowerTxLineScoreSchema = z
   .object({
     action: z.string().min(1),
+    confirmed: z.boolean().optional(),
+    dataSoccer: soccerActionDetailsSchema.optional(),
     fixtureId: z.number().int(),
+    followsAction: z.number().int().optional(),
+    id: z.number().int().optional(),
+    parti1StateSoccer: soccerPartyStateSchema.optional(),
+    parti2StateSoccer: soccerPartyStateSchema.optional(),
     period: z.number().int().nullable().optional(),
+    possibleEventSoccer: soccerPossibleNeutralEventSchema.optional(),
     seq: z.number().int().nonnegative(),
     stats: z
       .record(z.string().regex(/^\d+$/), z.number().int())
@@ -104,18 +200,47 @@ const lowerTxLineScoreSchema = z
         }),
       ),
     statusId: z.number().int().nullable().optional(),
+    statusSoccerId: z.union([z.number().int(), z.string().min(1)]).optional(),
     ts: z.number().int().nonnegative(),
   })
   .loose()
-  .transform(({ action, fixtureId, period, seq, stats, statusId, ts }) => ({
-    Action: action,
-    FixtureId: fixtureId,
-    Period: period,
-    Seq: seq,
-    Stats: stats,
-    StatusId: statusId,
-    Ts: ts,
-  }));
+  .transform(
+    ({
+      action,
+      confirmed,
+      dataSoccer,
+      fixtureId,
+      followsAction,
+      id,
+      parti1StateSoccer,
+      parti2StateSoccer,
+      period,
+      possibleEventSoccer,
+      seq,
+      stats,
+      statusId,
+      statusSoccerId,
+      ts,
+    }) => ({
+      Action: action,
+      Confirmed: confirmed,
+      Data: mergeSoccerActionDetails({
+        data: dataSoccer,
+        neutral: possibleEventSoccer,
+        participant1: parti1StateSoccer,
+        participant2: parti2StateSoccer,
+      }),
+      FixtureId: fixtureId,
+      FollowsAction: followsAction,
+      Id: id,
+      Period: period,
+      Seq: seq,
+      Stats: stats,
+      StatusId: statusId ?? soccerPhaseId(statusSoccerId),
+      StatusSoccerId: statusSoccerId,
+      Ts: ts,
+    }),
+  );
 
 export const rawTxLineScoreSchema = z.union([
   upperTxLineScoreSchema,
@@ -263,12 +388,16 @@ export function normalizeTxLinePayload(
   clock: Clock,
 ): NormalizeTxLineResult {
   txLineSourceSchema.parse(input.source);
-  const payloadVersion = input.payloadVersion ?? (input.payloadKind === 'odds' ? 2 : 1);
+  const payloadVersion =
+    input.payloadVersion ??
+    (input.payloadKind === 'odds' || input.payloadKind === 'score' ? 2 : 1);
   const receivedAtMs = input.receivedAtMs ?? clock.nowMs();
   const rawPayload = safeRawPayload(input.rawPayload);
 
   const supportedPayloadVersion =
-    payloadVersion === 1 || (input.payloadKind === 'odds' && payloadVersion === 2);
+    payloadVersion === 1 ||
+    ((input.payloadKind === 'odds' || input.payloadKind === 'score') &&
+      payloadVersion === 2);
   if (!supportedPayloadVersion) {
     return quarantine({
       code: 'unsupported_payload_version',
@@ -453,7 +582,7 @@ export function normalizeTxLinePayload(
   const raw = createRawInput({
     fixtureId: String(score.FixtureId),
     payloadKind: input.payloadKind,
-    payloadVersion: 1,
+    payloadVersion,
     rawPayload,
     receivedAtMs,
     source: input.source,
@@ -462,7 +591,7 @@ export function normalizeTxLinePayload(
   });
   const totalHome = score.Stats.find((stat) => stat.key === 1 && stat.period === 0);
   const totalAway = score.Stats.find((stat) => stat.key === 2 && stat.period === 0);
-  const event = createNormalizedEvent({
+  const commonEvent = {
     fixtureId: String(score.FixtureId),
     kind: 'score.observed',
     payload: {
@@ -472,14 +601,41 @@ export function normalizeTxLinePayload(
       homeScore: totalHome?.value ?? null,
       period: score.Period ?? null,
       stats: score.Stats,
-      statusId: score.StatusId ?? null,
+      statusId: score.StatusId ?? soccerPhaseId(score.StatusSoccerId) ?? null,
     },
-    payloadVersion: 1,
     receivedAtMs,
     sequence: score.Seq,
     source: input.source,
     sourceId,
     sourceTimestampMs: score.Ts,
-  });
+  } as const;
+  const event =
+    payloadVersion === 1
+      ? createNormalizedEvent({ ...commonEvent, payloadVersion: 1 })
+      : createNormalizedEvent({
+          ...commonEvent,
+          payload: {
+            ...commonEvent.payload,
+            actionId: String(score.Id ?? sourceId),
+            confirmed: score.Confirmed ?? null,
+            details: {
+              amendedAction: score.Data?.Action ?? null,
+              outcome: score.Data?.Outcome ?? null,
+              possible: {
+                goal: score.Data?.Goal ?? null,
+                penalty: score.Data?.Penalty ?? null,
+                redCard: score.Data?.RedCard ?? null,
+                review: score.Data?.VAR ?? null,
+              },
+              referencedActionId:
+                score.Data?.Id === undefined && score.FollowsAction === undefined
+                  ? null
+                  : String(score.Data?.Id ?? score.FollowsAction),
+              reliable: score.Data?.Reliable ?? null,
+              reviewType: score.Data?.Type ?? null,
+            },
+          },
+          payloadVersion: 2,
+        });
   return { event, ok: true, raw };
 }

@@ -106,6 +106,30 @@ export const scoreObservedPayloadSchema = z
   })
   .strict();
 
+const soccerPossibleEventSchema = z
+  .object({
+    goal: z.boolean().nullable(),
+    penalty: z.boolean().nullable(),
+    redCard: z.boolean().nullable(),
+    review: z.boolean().nullable(),
+  })
+  .strict();
+
+export const scoreObservedPayloadV2Schema = scoreObservedPayloadSchema.extend({
+  actionId: identifierSchema,
+  confirmed: z.boolean().nullable(),
+  details: z
+    .object({
+      amendedAction: z.string().min(1).max(200).nullable(),
+      outcome: z.string().min(1).max(200).nullable(),
+      possible: soccerPossibleEventSchema,
+      referencedActionId: identifierSchema.nullable(),
+      reliable: z.boolean().nullable(),
+      reviewType: z.string().min(1).max(200).nullable(),
+    })
+    .strict(),
+});
+
 const envelopeFields = {
   eventId: identifierSchema,
   fixtureId: identifierSchema,
@@ -149,6 +173,14 @@ const eventUnionSchema = z.union([
       kind: z.literal('score.observed'),
       payload: scoreObservedPayloadSchema,
       payloadVersion: z.literal(1),
+    })
+    .strict(),
+  z
+    .object({
+      ...envelopeFields,
+      kind: z.literal('score.observed'),
+      payload: scoreObservedPayloadV2Schema,
+      payloadVersion: z.literal(2),
     })
     .strict(),
 ]);

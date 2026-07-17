@@ -120,6 +120,109 @@ describe('TxLINE raw normalization', () => {
     expect(result.event.sequence).toBe(89);
   });
 
+  it('retains official soccer confirmation and VAR semantics in score payload v2', () => {
+    const result = normalizeTxLinePayload(
+      {
+        payloadKind: 'score',
+        rawPayload: {
+          action: 'var_end',
+          confirmed: true,
+          dataSoccer: { Outcome: 'Overturned', Type: 'Goal' },
+          fixtureId: 18_241_006,
+          id: 991,
+          seq: 90,
+          stats: { '1': 1, '2': 0 },
+          statusSoccerId: 'H2',
+          ts: 1_799_999_999_200,
+        },
+        source: 'txline-live',
+      },
+      clock,
+    );
+
+    expect(result.ok).toBe(true);
+    if (
+      !result.ok ||
+      result.event.kind !== 'score.observed' ||
+      result.event.payloadVersion !== 2
+    )
+      return;
+    expect(result.event.payload).toMatchObject({
+      action: 'var_end',
+      actionId: '991',
+      confirmed: true,
+      details: {
+        outcome: 'Overturned',
+        reviewType: 'Goal',
+      },
+      statusId: 4,
+    });
+  });
+
+  it('merges official participant and neutral possible-event state into score v2', () => {
+    const result = normalizeTxLinePayload(
+      {
+        payloadKind: 'score',
+        rawPayload: {
+          action: 'possible',
+          fixtureId: 18_241_006,
+          id: 993,
+          parti1StateSoccer: {
+            PossibleEvent: { Corner: false, Goal: true, Penalty: false },
+          },
+          parti2StateSoccer: {
+            PossibleEvent: { Corner: false, Goal: false, Penalty: false },
+          },
+          possibleEventSoccer: { RedCard: false, VAR: true, YellowCard: false },
+          seq: 92,
+          stats: { '1': 1, '2': 0 },
+          ts: 1_799_999_999_400,
+        },
+        source: 'txline-live',
+      },
+      clock,
+    );
+
+    expect(result.ok).toBe(true);
+    if (
+      !result.ok ||
+      result.event.kind !== 'score.observed' ||
+      result.event.payloadVersion !== 2
+    )
+      return;
+    expect(result.event.payload.details.possible).toEqual({
+      goal: true,
+      penalty: false,
+      redCard: false,
+      review: true,
+    });
+  });
+
+  it('can still decode an explicitly versioned v1 score record during migration', () => {
+    const result = normalizeTxLinePayload(
+      {
+        payloadKind: 'score',
+        payloadVersion: 1,
+        rawPayload: {
+          action: 'goal',
+          confirmed: false,
+          fixtureId: 18_241_006,
+          id: 992,
+          seq: 91,
+          stats: { '1': 1, '2': 0 },
+          ts: 1_799_999_999_300,
+        },
+        source: 'txline-historical',
+      },
+      clock,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.event.kind !== 'score.observed') return;
+    expect(result.event.payloadVersion).toBe(1);
+    expect('confirmed' in result.event.payload).toBe(false);
+  });
+
   it('accepts an official odds record with omitted optional price arrays', () => {
     const {
       Pct: _pct,

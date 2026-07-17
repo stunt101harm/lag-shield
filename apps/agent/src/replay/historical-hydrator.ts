@@ -208,7 +208,7 @@ export class TxLineHistoricalHydrator {
         fixtureId: String(input.fixture.fixtureId),
         scheduledAtMs: input.fixture.scheduledAtMs,
       },
-      normalizerVersion: 'txline-normalizer-v2-pct',
+      normalizerVersion: 'txline-normalizer-v3-score-semantics',
       oddsIntervals: [...intervals],
       orderingVersion: 'event-order-v1',
       sourceEndMs: input.fixture.sourceEndMs,

@@ -9,26 +9,47 @@ export const marketControlStates = ['OPEN', 'WIDENED', 'PAUSED', 'RECOVERY'] as 
 export const marketControlStateSchema = z.enum(marketControlStates);
 export type MarketControlState = z.infer<typeof marketControlStateSchema>;
 
-const strategyDecisionObjectSchema = z
+const strategyDecisionFields = {
+  action: z.enum(['none', 'widen', 'pause', 'begin_recovery', 'reopen']),
+  decisionId: identifierSchema,
+  expectedStateVersion: z.number().int().nonnegative(),
+  fixtureId: identifierSchema,
+  idempotencyKey: z.string().min(1).max(2_048),
+  logicalTimestampMs: epochMillisecondsSchema,
+  marketId: identifierSchema,
+  metrics: z.record(z.string(), z.number().finite()),
+  nextState: marketControlStateSchema,
+  policyVersion: z.string().min(1).max(100),
+  previousState: marketControlStateSchema,
+  reasonCodes: z.array(z.string().min(1).max(100)).max(100),
+  triggerEventId: identifierSchema,
+} as const;
+
+const strategyDecisionV1Schema = z
   .object({
-    action: z.enum(['none', 'widen', 'pause', 'begin_recovery', 'reopen']),
-    decisionId: identifierSchema,
-    expectedStateVersion: z.number().int().nonnegative(),
-    fixtureId: identifierSchema,
-    idempotencyKey: z.string().min(1).max(2_048),
-    logicalTimestampMs: epochMillisecondsSchema,
-    marketId: identifierSchema,
-    metrics: z.record(z.string(), z.number().finite()),
-    nextState: marketControlStateSchema,
+    ...strategyDecisionFields,
     payloadVersion: z.literal(1),
-    policyVersion: z.string().min(1).max(100),
-    previousState: marketControlStateSchema,
-    reasonCodes: z.array(z.string().min(1).max(100)).max(100),
-    triggerEventId: identifierSchema,
   })
   .strict();
-export const strategyDecisionSchema = strategyDecisionObjectSchema.superRefine(
-  (decision, context) => {
+
+const hashSchema = z.string().regex(/^[a-f0-9]{64}$/);
+const strategyDecisionV2Schema = z
+  .object({
+    ...strategyDecisionFields,
+    evidenceEventIds: z.array(identifierSchema).max(100),
+    inputFeatureHash: hashSchema,
+    payloadVersion: z.literal(2),
+    policyConfigurationHash: hashSchema,
+    thresholds: z.record(
+      z.string().min(1).max(100),
+      z.number().int().nonnegative().safe(),
+    ),
+  })
+  .strict();
+
+export const strategyDecisionSchema = z
+  .union([strategyDecisionV1Schema, strategyDecisionV2Schema])
+  .superRefine((decision, context) => {
     const expectedKey = buildDecisionIdempotencyKey(decision);
     if (
       decision.idempotencyKey !== expectedKey ||
@@ -42,7 +63,7 @@ export const strategyDecisionSchema = strategyDecisionObjectSchema.superRefine(
 
     const transition = `${decision.previousState}->${decision.nextState}`;
     const allowedTransitions: Record<typeof decision.action, readonly string[]> = {
-      begin_recovery: ['PAUSED->RECOVERY'],
+      begin_recovery: ['PAUSED->RECOVERY', 'WIDENED->RECOVERY'],
       none: marketControlStates.map((state) => `${state}->${state}`),
       pause: ['OPEN->PAUSED', 'WIDENED->PAUSED', 'RECOVERY->PAUSED'],
       reopen: ['RECOVERY->OPEN'],
@@ -54,16 +75,17 @@ export const strategyDecisionSchema = strategyDecisionObjectSchema.superRefine(
         message: `Action ${decision.action} cannot perform transition ${transition}.`,
       });
     }
-  },
-);
+  });
 export type StrategyDecision = z.infer<typeof strategyDecisionSchema>;
 
 export function buildDecisionIdempotencyKey(input: {
   readonly marketId: string;
+  readonly policyConfigurationHash?: string;
   readonly policyVersion: string;
   readonly triggerEventId: string;
 }): string {
   const parts = [input.triggerEventId, input.marketId, input.policyVersion];
+  if (input.policyConfigurationHash) parts.push(input.policyConfigurationHash);
   return `decision|${parts.map((part) => `${part.length}:${part}`).join('|')}`;
 }
 
@@ -77,10 +99,11 @@ function stableDecisionHash(value: string): string {
 }
 
 type DerivedDecisionKeys = 'decisionId' | 'idempotencyKey';
-export type StrategyDecisionInput = Omit<
-  z.input<typeof strategyDecisionObjectSchema>,
-  DerivedDecisionKeys
->;
+export type StrategyDecisionInput = StrategyDecision extends infer Decision
+  ? Decision extends StrategyDecision
+    ? Omit<Decision, DerivedDecisionKeys>
+    : never
+  : never;
 
 export function createStrategyDecision(input: StrategyDecisionInput): StrategyDecision {
   const idempotencyKey = buildDecisionIdempotencyKey(input);

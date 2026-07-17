@@ -5,6 +5,8 @@ import {
   consensusFormulaVersion,
   createNormalizedEvent,
   createReplayManifest,
+  defaultRiskPolicyConfiguration,
+  riskPolicyVersion,
   type JsonValue,
   type NormalizedDomainEvent,
   type ReplayResult,
@@ -28,9 +30,8 @@ export const seededDemoStrategyConfiguration = Object.freeze({
   minFreshBookmakers: 1,
   probabilityScale: 1_000_000,
   quoteStaleAfterMs: 5_000,
-  pauseLagMs: 5_000,
-  recoveryStableUpdates: 3,
-  widenLagMs: 2_000,
+  riskPolicy: defaultRiskPolicyConfiguration,
+  riskPolicyVersion,
 }) satisfies JsonValue;
 
 function fixtureEvent(): NormalizedDomainEvent {
@@ -126,7 +127,17 @@ function scoreEvent(
     kind: 'score.observed',
     payload: {
       action: 'goal',
+      actionId: 'seed-action-goal-1',
       awayScore: 0,
+      confirmed: false,
+      details: {
+        amendedAction: null,
+        outcome: null,
+        possible: { goal: true, penalty: false, redCard: false, review: false },
+        referencedActionId: null,
+        reliable: null,
+        reviewType: null,
+      },
       fixtureId,
       homeScore: input.homeScore,
       period: 2,
@@ -136,7 +147,7 @@ function scoreEvent(
       ],
       statusId: 2,
     },
-    payloadVersion: 1,
+    payloadVersion: 2,
     receivedAtMs: input.timestampMs,
     sequence: input.sequence,
     source: 'simulation',
@@ -180,13 +191,13 @@ export function createSeededDemoBundle() {
     dataMode: 'seeded-simulation',
     events,
     fixture: { competitionId, fixtureId, scheduledAtMs: startMs },
-    normalizerVersion: 'seeded-demo-v2-pct',
+    normalizerVersion: 'seeded-demo-v3-score-semantics',
     oddsIntervals: [],
     orderingVersion: 'event-order-v1',
     sourceEndMs: startMs + 68_000,
     sourceStartMs: startMs,
     strategyConfiguration: seededDemoStrategyConfiguration,
-    strategyVersion: 'lag-shield-v1',
+    strategyVersion: riskPolicyVersion,
   });
   return { events, manifest } as const;
 }

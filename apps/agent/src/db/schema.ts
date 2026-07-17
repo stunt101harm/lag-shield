@@ -300,7 +300,10 @@ export const scoreEvents = pgTable(
   'score_events',
   {
     action: text('action').notNull(),
+    actionId: text('action_id'),
     awayScore: integer('away_score'),
+    confirmed: boolean('confirmed'),
+    details: jsonb('details').$type<JsonValue>(),
     eventId: text('event_id')
       .primaryKey()
       .references(() => domainEvents.eventId, { onDelete: 'restrict' }),
@@ -342,7 +345,10 @@ export const fixtureScoreState = pgTable(
   'fixture_score_state',
   {
     action: text('action').notNull(),
+    actionId: text('action_id'),
     awayScore: integer('away_score'),
+    confirmed: boolean('confirmed'),
+    details: jsonb('details').$type<JsonValue>(),
     fixtureId: text('fixture_id').primaryKey(),
     homeScore: integer('home_score'),
     lastEventId: text('last_event_id')

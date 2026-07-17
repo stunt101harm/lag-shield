@@ -1,4 +1,5 @@
 import {
+  DeterministicRiskEngine,
   FixedClock,
   createReplayManifest,
   createReplayRun,
@@ -67,8 +68,11 @@ function normalizeScore(input: {
     {
       payloadKind: 'score',
       rawPayload: {
-        Action: 'score_update',
+        Action: 'goal',
+        Confirmed: false,
+        Data: { Goal: true },
         FixtureId: 42,
+        Id: input.seq,
         Seq: input.seq,
         Stats: [
           { Key: 1, Period: 0, Value: input.home },
@@ -186,14 +190,31 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
     await requireStore().appendEvent({ event: historical.event, raw: historical.raw });
 
     const state = await client!<
-      { away_score: number; home_score: number; last_event_id: string }[]
+      {
+        action_id: string;
+        away_score: number;
+        confirmed: boolean;
+        details: { possible: { goal: boolean } };
+        home_score: number;
+        last_event_id: string;
+      }[]
     >`
-      SELECT away_score, home_score, last_event_id
+      SELECT action_id, away_score, confirmed, details, home_score, last_event_id
       FROM fixture_score_state
       WHERE fixture_id = '42'
     `;
     expect(state[0]).toEqual({
+      action_id: '10',
       away_score: 1,
+      confirmed: false,
+      details: {
+        amendedAction: null,
+        outcome: null,
+        possible: { goal: true, penalty: null, redCard: null, review: null },
+        referencedActionId: null,
+        reliable: null,
+        reviewType: null,
+      },
       home_score: 2,
       last_event_id: live.event.eventId,
     });
@@ -276,7 +297,7 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
         fixtureId: historical.event.fixtureId,
         scheduledAtMs: 1_699_999_000_000,
       },
-      normalizerVersion: 'txline-normalizer-v2-pct',
+      normalizerVersion: 'txline-normalizer-v3-score-semantics',
       oddsIntervals: [
         ...planHistoricalOddsIntervals({
           endMs: historical.event.sourceTimestampMs,
@@ -412,6 +433,54 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
     await expect(requireStore().loadMarketControlState(marketId)).resolves.toMatchObject({
       state: 'RECOVERY',
       stateVersion: 2,
+    });
+  });
+
+  it('persists v2 risk thresholds and reproducibility hashes in the decision payload', async () => {
+    const normalized = normalizeOdds();
+    await requireStore().appendEvent({ event: normalized.event, raw: normalized.raw });
+    if (normalized.event.kind !== 'odds.observed') return;
+    const engine = new DeterministicRiskEngine();
+    const evaluation = engine.evaluate({
+      features: {
+        consensusStatus: 'insufficient',
+        freshBookmakerCount: 0,
+        maxAbsVelocityMicrosPerSecond: null,
+        maxDispersionMadMicros: null,
+        maxReactionLatencyMs: null,
+        oldestFreshQuoteAgeMs: null,
+        staleBookmakerFractionPpm: 1_000_000,
+        unreactedBookmakerCount: 0,
+      },
+      fixtureId: normalized.event.fixtureId,
+      logicalTimestampMs: normalized.event.sourceTimestampMs,
+      marketId: normalized.event.payload.market.marketId,
+      proofStatus: 'pending',
+      triggerEventId: normalized.event.eventId,
+    });
+    if (!evaluation.decision || evaluation.decision.payloadVersion !== 2) return;
+
+    await expect(
+      requireStore().appendDecision(evaluation.decision),
+    ).resolves.toMatchObject({ status: 'inserted' });
+    const rows = await client!<
+      {
+        input_hash: string;
+        policy_hash: string;
+        recovery_updates: number;
+      }[]
+    >`
+      SELECT
+        payload ->> 'inputFeatureHash' AS input_hash,
+        payload ->> 'policyConfigurationHash' AS policy_hash,
+        (payload -> 'thresholds' ->> 'recoveryStableUpdates')::int AS recovery_updates
+      FROM strategy_decisions
+      WHERE decision_id = ${evaluation.decision.decisionId}
+    `;
+    expect(rows[0]).toEqual({
+      input_hash: evaluation.decision.inputFeatureHash,
+      policy_hash: evaluation.decision.policyConfigurationHash,
+      recovery_updates: 3,
     });
   });
 

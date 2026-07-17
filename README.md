@@ -70,6 +70,9 @@ For exact `Pct` conversion, residual normalization, robust median/MAD features, 
 latency, and market-key rules, see
 [market identity and consensus mathematics](docs/market-consensus.md).
 
+For the score-event classifier, risk thresholds, fail-safe behavior, hysteresis, and complete
+state-transition table, see the [deterministic soccer risk policy](docs/risk-policy.md).
+
 ## Quality gates
 
 ```bash

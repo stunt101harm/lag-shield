@@ -25,6 +25,11 @@ version 2 also captures TxLINE's documented three-decimal `Pct` strings as exact
 millionths under `txline-pct-percent-3dp-v1`. Version 1 remains readable for replay migration.
 See [market mathematics](market-consensus.md).
 
+Score payload version 2 retains TxLINE action identity, confirmation state, possible-event
+flags, review/outcome details, amendment references, and reliability state. Version 1 remains
+readable for old manifests. These fields drive the documented
+[deterministic soccer risk policy](risk-policy.md); missing optional semantics remain `null`.
+
 Malformed, unknown, and unsupported-version records do not crash the agent. They enter
 `raw_ingest_records` with `status = quarantined`, a stable identity, the untouched JSON
 payload, an error code, and validation issues.
