@@ -56,7 +56,16 @@ export const decisionAction = pgEnum('decision_action', [
   'begin_recovery',
   'reopen',
 ]);
-export const receiptStatus = pgEnum('receipt_status', ['pending', 'verified', 'failed']);
+export const receiptStatus = pgEnum('receipt_status', [
+  'pending',
+  'verified',
+  'failed',
+  'rejected',
+  'unavailable',
+  'error',
+]);
+export const proofKind = pgEnum('proof_kind', ['odds', 'score']);
+export const proofNetwork = pgEnum('proof_network', ['devnet', 'mainnet']);
 export const replayStatus = pgEnum('replay_status', [
   'pending',
   'running',
@@ -452,22 +461,62 @@ export const decisionReceipts = pgTable(
   'decision_receipts',
   {
     anchoredAtMs: bigint('anchored_at_ms', { mode: 'number' }),
+    attemptCount: integer('attempt_count').notNull().default(0),
+    attemptedAtMs: bigint('attempted_at_ms', { mode: 'number' }),
+    completedAtMs: bigint('completed_at_ms', { mode: 'number' }),
+    createdAtMs: bigint('created_at_ms', { mode: 'number' }),
     decisionId: text('decision_id')
       .notNull()
       .references(() => strategyDecisions.decisionId, { onDelete: 'restrict' }),
+    errorCode: text('error_code'),
+    errorMessage: text('error_message'),
+    explorerAccountUrl: text('explorer_account_url'),
+    explorerProgramUrl: text('explorer_program_url'),
     payload: jsonb('payload').$type<DecisionReceipt>().notNull(),
     payloadHash: text('payload_hash').notNull(),
+    payloadVersion: integer('payload_version').notNull().default(1),
+    programId: text('program_id'),
+    proofKind: proofKind('proof_kind'),
+    proofMaterial: jsonb('proof_material').$type<JsonValue>(),
+    proofMaterialHash: text('proof_material_hash'),
+    proofNetwork: proofNetwork('proof_network'),
     proofReference: text('proof_reference'),
     receiptId: text('receipt_id').primaryKey(),
+    rootAccount: text('root_account'),
+    simulationSlot: bigint('simulation_slot', { mode: 'number' }),
+    sourceEventId: text('source_event_id'),
+    sourceMessageId: text('source_message_id'),
+    sourceTimestampMs: bigint('source_timestamp_ms', { mode: 'number' }),
     status: receiptStatus('status').notNull(),
+    summary: text('summary'),
+    updatedAtMs: bigint('updated_at_ms', { mode: 'number' }),
   },
   (table) => [
     check(
       'decision_receipts_anchored_at_check',
       sql`${table.anchoredAtMs} IS NULL OR ${table.anchoredAtMs} >= 0`,
     ),
+    check('decision_receipts_attempt_count_check', sql`${table.attemptCount} >= 0`),
+    check(
+      'decision_receipts_timestamps_check',
+      sql`(${table.createdAtMs} IS NULL OR ${table.createdAtMs} >= 0) AND
+          (${table.attemptedAtMs} IS NULL OR ${table.attemptedAtMs} >= 0) AND
+          (${table.completedAtMs} IS NULL OR ${table.completedAtMs} >= 0) AND
+          (${table.updatedAtMs} IS NULL OR ${table.updatedAtMs} >= 0) AND
+          (${table.sourceTimestampMs} IS NULL OR ${table.sourceTimestampMs} >= 0) AND
+          (${table.simulationSlot} IS NULL OR ${table.simulationSlot} >= 0)`,
+    ),
+    check('decision_receipts_payload_version_check', sql`${table.payloadVersion} > 0`),
+    check(
+      'decision_receipts_v2_fields_check',
+      sql`${table.payloadVersion} < 2 OR (
+        ${table.createdAtMs} IS NOT NULL AND
+        ${table.summary} IS NOT NULL AND
+        ${table.updatedAtMs} IS NOT NULL
+      )`,
+    ),
     uniqueIndex('decision_receipts_decision_uidx').on(table.decisionId),
-    index('decision_receipts_status_idx').on(table.status),
+    index('decision_receipts_status_idx').on(table.status, table.updatedAtMs),
   ],
 );
 

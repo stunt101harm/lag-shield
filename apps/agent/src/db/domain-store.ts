@@ -19,22 +19,15 @@ import {
 import type postgres from 'postgres';
 
 import type { DatabaseClient } from './client.js';
+import { ConcurrentStateError, IdempotencyConflictError } from './errors.js';
+import {
+  createReceiptFromStoredEvidence,
+  insertDecisionReceipt,
+} from './receipt-store.js';
+
+export { ConcurrentStateError, IdempotencyConflictError } from './errors.js';
 
 type Transaction = postgres.TransactionSql;
-
-export class IdempotencyConflictError extends Error {
-  constructor(readonly idempotencyKey: string) {
-    super(`Idempotency key ${idempotencyKey} was reused for a different payload.`);
-    this.name = 'IdempotencyConflictError';
-  }
-}
-
-export class ConcurrentStateError extends Error {
-  constructor(message: string) {
-    super(message);
-    this.name = 'ConcurrentStateError';
-  }
-}
 
 function jsonParameter(value: JsonValue): string {
   return JSON.stringify(value);
@@ -684,6 +677,8 @@ export class PostgresDomainStore implements DomainStore {
           ${jsonParameter(toJsonValue(decision))}::jsonb
         )
       `;
+      const receipt = await createReceiptFromStoredEvidence(transaction, decision);
+      await insertDecisionReceipt(transaction, receipt);
       const nextVersion = currentVersion + 1;
       await transaction`
         INSERT INTO market_control_states (

@@ -1,19 +1,31 @@
 import fastify, { type FastifyInstance } from 'fastify';
 import {
+  decisionReceiptSchema,
   marketOrderRequestSchema,
   simulatedMarketControlAdapter,
+  type JsonValue,
   type MarketControlPort,
 } from '@lagshield/core';
-import { ZodError } from 'zod';
+import { z, ZodError } from 'zod';
 
 import { IdempotencyConflictError } from './db/domain-store.js';
 import { MarketNotInitializedError } from './db/market-control.js';
 import type { LiveIngestionSnapshot } from './ingest/live-txline.js';
+import type { DecisionProofWorkerSnapshot } from './proof/decision-proof-service.js';
+
+export interface DecisionReceiptReader {
+  load(receiptId: string): Promise<Readonly<{
+    proofMaterial: JsonValue | null;
+    receipt: unknown;
+  }> | null>;
+}
 
 export type BuildAppOptions = Readonly<{
   getLiveIngestionSnapshot?: () => LiveIngestionSnapshot | null;
+  getProofVerificationSnapshot?: () => DecisionProofWorkerSnapshot | null;
   logger?: boolean | { level: string };
   marketControl?: MarketControlPort;
+  receiptReader?: DecisionReceiptReader;
 }>;
 
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
@@ -31,6 +43,52 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     const snapshot = options.getLiveIngestionSnapshot?.() ?? null;
     return snapshot ? { enabled: true, ...snapshot } : { enabled: false };
   });
+
+  app.get('/metrics/proofs', async () => {
+    const snapshot = options.getProofVerificationSnapshot?.() ?? null;
+    return snapshot ? { enabled: true, ...snapshot } : { enabled: false };
+  });
+
+  app.get<{ Params: { receiptId: string } }>(
+    '/v1/decision-receipts/:receiptId',
+    async (request, reply) => {
+      if (!options.receiptReader) {
+        return reply.code(503).send({
+          code: 'DECISION_RECEIPTS_DISABLED',
+        });
+      }
+      const { receiptId } = z
+        .object({ receiptId: z.string().min(1).max(512) })
+        .parse(request.params);
+      const stored = await options.receiptReader.load(receiptId);
+      if (!stored) {
+        return reply.code(404).send({
+          code: 'DECISION_RECEIPT_NOT_FOUND',
+          receiptId,
+        });
+      }
+      const receipt = decisionReceiptSchema.parse(stored.receipt);
+      return {
+        decisionAnchor: {
+          algorithm: 'sha256',
+          payloadHash: receipt.payloadHash,
+          receiptId: receipt.receiptId,
+          scope:
+            'LagShield strategy decision and its exact persisted TxLINE event provenance',
+        },
+        proofMaterial: stored.proofMaterial,
+        receipt,
+        txlineAnchor:
+          'verification' in receipt
+            ? receipt.verification
+            : {
+                anchoredAtMs: receipt.anchoredAtMs,
+                proofReference: receipt.proofReference,
+                status: receipt.status,
+              },
+      };
+    },
+  );
 
   app.get('/v1/simulated-market-control', async () => ({
     adapter: simulatedMarketControlAdapter,

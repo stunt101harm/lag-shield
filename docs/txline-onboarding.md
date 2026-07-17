@@ -147,5 +147,6 @@ Live ingestion now adds `GET /api/odds/stream` and `GET /api/scores/stream` behi
 network and authentication boundary. See [live ingestion operations](live-ingestion.md).
 Historical replay adds `GET /api/scores/historical/{fixtureId}` and
 `GET /api/odds/updates/{epochDay}/{hourOfDay}/{interval}`. See
-[historical replay operations](historical-replay.md). On-chain proof validation remains a
-separate increment.
+[historical replay operations](historical-replay.md). On-chain receipt verification adds
+`GET /api/odds/validation` and `GET /api/scores/stat-validation`; see
+[decision receipts and TxLINE Solana proofs](proof-verification.md).

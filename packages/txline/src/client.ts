@@ -5,6 +5,12 @@ import {
   type HistoricalOddsInterval,
 } from './historical.js';
 import {
+  txLineOddsValidationSchema,
+  txLineScoreStatValidationSchema,
+  type TxLineOddsValidation,
+  type TxLineScoreStatValidation,
+} from './proof.js';
+import {
   activationResponseSchema,
   fixtureSnapshotSchema,
   guestSessionSchema,
@@ -112,6 +118,55 @@ export class TxLineApiClient {
     return assertArray(
       await this.#requestJson(url, `historical odds interval ${interval.startMs}`),
       'historical odds',
+    );
+  }
+
+  async fetchOddsValidation(
+    input: Readonly<{
+      messageId: string;
+      timestampMs: number;
+    }>,
+  ): Promise<TxLineOddsValidation> {
+    if (input.messageId.trim().length === 0) {
+      throw new Error('TxLINE odds proof messageId cannot be blank.');
+    }
+    assertNonNegativeInteger('timestampMs', input.timestampMs);
+    const url = new URL('/api/odds/validation', this.#config.apiOrigin);
+    url.searchParams.set('messageId', input.messageId);
+    url.searchParams.set('ts', String(input.timestampMs));
+    return txLineOddsValidationSchema.parse(
+      await this.#requestJson(url, `odds proof for message ${input.messageId}`),
+    );
+  }
+
+  async fetchScoreStatValidation(
+    input: Readonly<{
+      fixtureId: number;
+      sequence: number;
+      statKey: number;
+      statKey2?: number;
+    }>,
+  ): Promise<TxLineScoreStatValidation> {
+    assertNonNegativeInteger('fixtureId', input.fixtureId);
+    if (!Number.isSafeInteger(input.sequence) || input.sequence < 1) {
+      throw new Error('TxLINE score proof sequence must be a positive integer.');
+    }
+    assertNonNegativeInteger('statKey', input.statKey);
+    if (input.statKey2 !== undefined) {
+      assertNonNegativeInteger('statKey2', input.statKey2);
+    }
+    const url = new URL('/api/scores/stat-validation', this.#config.apiOrigin);
+    url.searchParams.set('fixtureId', String(input.fixtureId));
+    url.searchParams.set('seq', String(input.sequence));
+    url.searchParams.set('statKey', String(input.statKey));
+    if (input.statKey2 !== undefined) {
+      url.searchParams.set('statKey2', String(input.statKey2));
+    }
+    return txLineScoreStatValidationSchema.parse(
+      await this.#requestJson(
+        url,
+        `score stat proof for fixture ${input.fixtureId} sequence ${input.sequence}`,
+      ),
     );
   }
 

@@ -4,8 +4,10 @@ import {
   createReplayManifest,
   createReplayRun,
   createStrategyDecision,
+  decisionReceiptMaterialHash,
   marketOrderRequestSchema,
   replayRunSchema,
+  toJsonValue,
   type MarketOrderRequest,
   type MarketRiskFeatures,
   type NormalizedDomainEvent,
@@ -26,6 +28,7 @@ import {
   PostgresSimulatedMarketControl,
 } from './market-control.js';
 import { PostgresReplayStore } from './replay-store.js';
+import { PostgresDecisionReceiptStore } from './receipt-store.js';
 import { ingestTxLinePayload } from '../ingest/txline-ingest.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -572,7 +575,10 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
     const accepted = await gate.submitOrder(openRequest);
     const duplicate = await gate.submitOrder(openRequest);
     expect(accepted).toMatchObject({
-      decisionReceipt: { decisionId: open.decisionId, status: 'pending' },
+      decisionReceipt: {
+        decisionId: open.decisionId,
+        verification: { status: 'pending' },
+      },
       order: {
         admissionReasonCode: 'ORDER_ACCEPTED_OPEN',
         marketStateVersion: 1,
@@ -680,6 +686,100 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
       true,
     );
     expect(rows.every(({ payload_version }) => payload_version === 2)).toBe(true);
+  });
+
+  it('atomically binds each decision receipt to exact persisted TxLINE provenance', async () => {
+    const normalized = normalizeOdds({ MessageId: 'receipt-proof-message' });
+    await requireStore().appendEvent({ event: normalized.event, raw: normalized.raw });
+    if (normalized.event.kind !== 'odds.observed') return;
+    const decision = createStrategyDecision({
+      action: 'none',
+      expectedStateVersion: 0,
+      fixtureId: normalized.event.fixtureId,
+      logicalTimestampMs: normalized.event.sourceTimestampMs,
+      marketId: normalized.event.payload.market.marketId,
+      metrics: {},
+      nextState: 'OPEN',
+      payloadVersion: 1,
+      policyVersion: 'receipt-integration',
+      previousState: 'OPEN',
+      reasonCodes: ['HEALTHY'],
+      triggerEventId: normalized.event.eventId,
+    });
+
+    await requireStore().appendDecision(decision);
+    const receiptStore = new PostgresDecisionReceiptStore(client!);
+    const stored = await receiptStore.loadByDecisionId(decision.decisionId);
+
+    expect(stored?.receipt).toMatchObject({
+      canonicalPayload: {
+        decision: { decisionId: decision.decisionId },
+        evidence: [
+          {
+            eventId: normalized.event.eventId,
+            kind: 'odds.observed',
+            source: 'txline-live',
+            sourceMessageId: 'receipt-proof-message',
+            sourceTimestampMs: normalized.event.sourceTimestampMs,
+          },
+        ],
+      },
+      decisionId: decision.decisionId,
+      payloadVersion: 2,
+      verification: { attemptCount: 0, status: 'pending' },
+    });
+    expect(stored?.proofMaterial).toBeNull();
+    await expect(receiptStore.listPending(10)).resolves.toHaveLength(1);
+
+    if (!stored || !('verification' in stored.receipt)) {
+      throw new Error('Expected a version 2 decision receipt.');
+    }
+    const proofMaterial = toJsonValue({
+      messageId: 'receipt-proof-message',
+      proof: ['aa'.repeat(32)],
+      timestampMs: normalized.event.sourceTimestampMs,
+    });
+    const verified = await receiptStore.updateVerification({
+      expectedAttemptCount: 0,
+      proofMaterial,
+      receiptId: stored.receipt.receiptId,
+      verification: {
+        ...stored.receipt.verification,
+        attemptCount: 1,
+        attemptedAtMs: clock.nowMs(),
+        completedAtMs: clock.nowMs(),
+        explorerAccountUrl: 'https://explorer.solana.com/address/root?cluster=devnet',
+        explorerProgramUrl: 'https://explorer.solana.com/address/program?cluster=devnet',
+        kind: 'odds',
+        network: 'devnet',
+        programId: 'program',
+        proofMaterialHash: decisionReceiptMaterialHash(proofMaterial),
+        proofReference:
+          '/api/odds/validation?messageId=receipt-proof-message&ts=1700000000000',
+        rootAccount: 'root',
+        simulationSlot: 123,
+        sourceEventId: normalized.event.eventId,
+        sourceMessageId: 'receipt-proof-message',
+        sourceTimestampMs: normalized.event.sourceTimestampMs,
+        status: 'verified',
+        summary: 'Verified in integration test.',
+        updatedAtMs: clock.nowMs(),
+      },
+    });
+    expect(verified).toMatchObject({
+      payloadHash: stored.receipt.payloadHash,
+      receiptId: stored.receipt.receiptId,
+      verification: { attemptCount: 1, status: 'verified' },
+    });
+    await expect(receiptStore.listPending(10)).resolves.toHaveLength(0);
+    await expect(
+      receiptStore.updateVerification({
+        expectedAttemptCount: 1,
+        proofMaterial: toJsonValue({ forged: true }),
+        receiptId: stored.receipt.receiptId,
+        verification: verified.verification,
+      }),
+    ).rejects.toBeInstanceOf(IdempotencyConflictError);
   });
 
   it('serializes a concurrent pause and order admission on the same market lock', async () => {

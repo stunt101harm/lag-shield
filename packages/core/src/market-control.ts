@@ -1,12 +1,15 @@
 import { z } from 'zod';
 
+import {
+  createPendingDecisionReceipt,
+  decisionReceiptSchema,
+  type DecisionReceipt,
+} from './decision-receipt.js';
 import { stableHash, toJsonValue } from './json.js';
 import {
-  decisionReceiptSchema,
   marketOrderRequestSchema,
   simulatedOrderV2Schema,
   strategyDecisionSchema,
-  type DecisionReceipt,
   type MarketControlSnapshot,
   type MarketOrderAdmissionReasonCode,
   type MarketOrderRequest,
@@ -52,16 +55,7 @@ export function buildSimulatedOrderId(
 }
 
 export function buildDecisionReceipt(decisionInput: StrategyDecision): DecisionReceipt {
-  const decision = strategyDecisionSchema.parse(decisionInput);
-  const payloadHash = stableHash(toJsonValue(decision));
-  return decisionReceiptSchema.parse({
-    anchoredAtMs: null,
-    decisionId: decision.decisionId,
-    payloadHash,
-    proofReference: null,
-    receiptId: `rcpt_${payloadHash.slice(0, 40)}`,
-    status: 'pending',
-  });
+  return createPendingDecisionReceipt(decisionInput);
 }
 
 type AdmissionOutcome = Readonly<{
@@ -128,6 +122,7 @@ function evaluateAdmission(
 export function createMarketControlAdmission(
   input: Readonly<{
     decision: StrategyDecision;
+    decisionReceipt?: DecisionReceipt;
     evaluatedAtMs: number;
     policy?: MarketControlPolicyConfiguration;
     request: MarketOrderRequest;
@@ -162,7 +157,20 @@ export function createMarketControlAdmission(
   }
 
   const outcome = evaluateAdmission(request, input.snapshot, input.evaluatedAtMs, policy);
-  const receipt = buildDecisionReceipt(decision);
+  const receipt = decisionReceiptSchema.parse(
+    input.decisionReceipt ?? buildDecisionReceipt(decision),
+  );
+  if (receipt.decisionId !== decision.decisionId) {
+    throw new Error('Decision receipt does not belong to the committed decision.');
+  }
+  if (
+    'payloadVersion' in receipt &&
+    receipt.payloadVersion === 2 &&
+    stableHash(toJsonValue(receipt.canonicalPayload.decision)) !==
+      stableHash(toJsonValue(decision))
+  ) {
+    throw new Error('Decision receipt payload does not match the committed decision.');
+  }
   const order = simulatedOrderV2Schema.parse({
     admissionLatencyMs: input.evaluatedAtMs - request.requestedAtMs,
     admissionPolicyVersion: 'lag-shield-market-admission-v1',

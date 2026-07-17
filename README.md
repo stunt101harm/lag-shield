@@ -77,6 +77,10 @@ For the executable admission matrix, atomic pause-versus-order guarantee, paper-
 idempotency semantics, and replay evidence, see
 [simulated market control](docs/simulated-market-control.md).
 
+For canonical decision receipts, exact TxLINE source provenance, pinned Borsh instruction
+layouts, Solana PDA/program verification, proof lifecycle, and real-network test procedure,
+see [decision receipts and TxLINE Solana proofs](docs/proof-verification.md).
+
 ## Quality gates
 
 ```bash

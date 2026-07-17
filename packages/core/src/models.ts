@@ -114,7 +114,7 @@ export function createStrategyDecision(input: StrategyDecisionInput): StrategyDe
   });
 }
 
-export const decisionReceiptSchema = z
+export const decisionReceiptV1Schema = z
   .object({
     anchoredAtMs: epochMillisecondsSchema.nullable(),
     decisionId: identifierSchema,
@@ -124,7 +124,7 @@ export const decisionReceiptSchema = z
     status: z.enum(['pending', 'verified', 'failed']),
   })
   .strict();
-export type DecisionReceipt = z.infer<typeof decisionReceiptSchema>;
+export type DecisionReceiptV1 = z.infer<typeof decisionReceiptV1Schema>;
 
 export const replayRunSchema = z
   .object({

@@ -6,6 +6,7 @@ export * from './errors.js';
 export * from './historical.js';
 export * from './live.js';
 export * from './network.js';
+export * from './proof.js';
 export * from './raw.js';
 export * from './redact.js';
 export * from './schemas.js';

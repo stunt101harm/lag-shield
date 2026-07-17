@@ -17,6 +17,20 @@ describe('parseAgentEnvironment', () => {
       TXLINE_CREDENTIALS_FILE: '.txline/devnet.credentials.json',
       TXLINE_LIVE_ENABLED: false,
       TXLINE_NETWORK: 'devnet',
+      TXLINE_PROOF_INTERVAL_MS: 10_000,
+    });
+  });
+
+  it('accepts a bounded proof interval and custom Solana RPC', () => {
+    expect(
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        TXLINE_PROOF_INTERVAL_MS: '2500',
+        TXLINE_RPC_URL: 'https://rpc.example.com',
+      }),
+    ).toMatchObject({
+      TXLINE_PROOF_INTERVAL_MS: 2_500,
+      TXLINE_RPC_URL: 'https://rpc.example.com',
     });
   });
 

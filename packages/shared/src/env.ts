@@ -23,6 +23,13 @@ export const agentEnvironmentSchema = z.object({
     .default('false')
     .transform((value) => value === 'true'),
   TXLINE_NETWORK: z.enum(['devnet', 'mainnet']).default('devnet'),
+  TXLINE_PROOF_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(300_000)
+    .default(10_000),
+  TXLINE_RPC_URL: z.string().url().optional(),
 });
 
 export type AgentEnvironment = z.infer<typeof agentEnvironmentSchema>;

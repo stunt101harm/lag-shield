@@ -57,6 +57,13 @@
       "when": 1784328964571,
       "tag": "0007_fine_bloodstrike",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1784330571322,
+      "tag": "0008_fast_bedlam",
+      "breakpoints": true
     }
   ]
 }

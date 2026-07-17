@@ -58,6 +58,9 @@ importers:
       '@lagshield/txline':
         specifier: workspace:*
         version: link:../../packages/txline
+      '@solana/web3.js':
+        specifier: ^1.98.4
+        version: 1.98.4(bufferutil@4.1.0)(typescript@6.0.3)
       dotenv:
         specifier: ^17.4.2
         version: 17.4.2

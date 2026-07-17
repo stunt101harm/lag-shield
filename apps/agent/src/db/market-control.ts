@@ -20,7 +20,7 @@ import {
 import type postgres from 'postgres';
 
 import type { DatabaseClient } from './client.js';
-import { IdempotencyConflictError } from './domain-store.js';
+import { IdempotencyConflictError } from './errors.js';
 
 function jsonParameter(value: unknown): string {
   return JSON.stringify(toJsonValue(value));
@@ -133,34 +133,20 @@ export class PostgresSimulatedMarketControl implements MarketControlPort {
         WHERE decision_id = ${snapshot.lastDecisionId}
       `;
       const decision = strategyDecisionSchema.parse(decisionRows[0]?.payload);
+      const receiptRows = await transaction<ReceiptRow[]>`
+        SELECT payload
+        FROM decision_receipts
+        WHERE decision_id = ${decision.decisionId}
+      `;
+      const decisionReceipt = decisionReceiptSchema.parse(receiptRows[0]?.payload);
       const admission = createMarketControlAdmission({
         decision,
+        decisionReceipt,
         evaluatedAtMs,
         policy: this.#policy,
         request,
         snapshot,
       });
-
-      await transaction`
-        INSERT INTO decision_receipts (
-          receipt_id,
-          decision_id,
-          payload_hash,
-          status,
-          anchored_at_ms,
-          proof_reference,
-          payload
-        ) VALUES (
-          ${admission.decisionReceipt.receiptId},
-          ${admission.decisionReceipt.decisionId},
-          ${admission.decisionReceipt.payloadHash},
-          ${admission.decisionReceipt.status},
-          ${admission.decisionReceipt.anchoredAtMs},
-          ${admission.decisionReceipt.proofReference},
-          ${jsonParameter(admission.decisionReceipt)}::jsonb
-        )
-        ON CONFLICT (decision_id) DO NOTHING
-      `;
       const receipt = await this.#loadReceipt(transaction, admission.order);
       if (receipt.receiptId !== admission.order.circuitBreakerReceiptId) {
         throw new Error('Committed decision receipt identity is not canonical.');

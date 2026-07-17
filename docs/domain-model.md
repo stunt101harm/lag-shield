@@ -84,12 +84,15 @@ newer live state.
 Decision writes take a transaction-scoped PostgreSQL advisory lock per market. The caller
 supplies `expectedStateVersion`, and stale writers fail with `ConcurrentStateError`.
 `market_control_states` can be loaded after process restart, while the append-only
-`strategy_decisions` table retains the audit trail.
+`strategy_decisions` table retains the audit trail. The canonical pending decision receipt
+is inserted in that same transaction from the exact referenced `domain_events` rows.
 
 Simulated order admission takes the same market lock after a replay-scoped idempotency lock.
-The latest decision, pending receipt, admission result, and paper order therefore share one
-market-serialized transaction boundary. See [simulated market control](simulated-market-control.md)
-for the state matrix and pause-versus-order race invariant.
+It loads the receipt that already committed with the latest decision, then stores the
+admission result and paper order in a second market-serialized transaction. See
+[simulated market control](simulated-market-control.md) for the state matrix and
+pause-versus-order race invariant, and [proof verification](proof-verification.md) for
+receipt identity and lifecycle.
 
 ## Storage layout
 

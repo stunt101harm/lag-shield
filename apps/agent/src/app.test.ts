@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import {
   createMarketControlAdmission,
+  createPendingDecisionReceipt,
   createStrategyDecision,
   marketOrderRequestSchema,
   type MarketControlPort,
@@ -76,6 +77,32 @@ describe('agent health endpoint', () => {
     });
     expect(response.body).not.toContain('apiToken');
     expect(response.body).not.toContain('Authorization');
+  });
+
+  it('exposes proof worker health without credentials or proof material', async () => {
+    app = buildApp({
+      getProofVerificationSnapshot: () => ({
+        lastError: null,
+        lastFinishedAtMs: 123,
+        lastResult: {
+          error: 0,
+          processed: 2,
+          rejected: 0,
+          unavailable: 1,
+          verified: 1,
+        },
+        running: true,
+      }),
+    });
+
+    const response = await app.inject({ method: 'GET', url: '/metrics/proofs' });
+
+    expect(response.json()).toMatchObject({
+      enabled: true,
+      lastResult: { processed: 2, verified: 1 },
+      running: true,
+    });
+    expect(response.body).not.toContain('apiToken');
   });
 
   it('labels the order gateway as simulated and fails closed when disabled', async () => {
@@ -160,7 +187,10 @@ describe('agent health endpoint', () => {
     expect(response.statusCode).toBe(201);
     expect(response.json()).toMatchObject({
       adapter: 'lag-shield-simulated-market-v1',
-      decisionReceipt: { decisionId: decision.decisionId, status: 'pending' },
+      decisionReceipt: {
+        decisionId: decision.decisionId,
+        verification: { status: 'pending' },
+      },
       order: {
         admissionReasonCode: 'ORDER_ACCEPTED_OPEN',
         circuitBreakerReceiptId: admission.decisionReceipt.receiptId,
@@ -168,6 +198,73 @@ describe('agent health endpoint', () => {
       },
       persistenceStatus: 'inserted',
       realMoney: false,
+    });
+  });
+
+  it('returns a canonical receipt, exact provenance, and proof lifecycle', async () => {
+    const decision = createStrategyDecision({
+      action: 'pause',
+      expectedStateVersion: 0,
+      fixtureId: 'fixture-1',
+      logicalTimestampMs: 1_000,
+      marketId: 'market-1',
+      metrics: {},
+      nextState: 'PAUSED',
+      payloadVersion: 1,
+      policyVersion: 'receipt-api-test',
+      previousState: 'OPEN',
+      reasonCodes: ['SCORE_SHOCK'],
+      triggerEventId: 'event-1',
+    });
+    const receipt = createPendingDecisionReceipt(decision, [
+      {
+        eventId: 'event-1',
+        kind: 'score.observed',
+        scoreStatKey: 1,
+        source: 'txline-live',
+        sourceMessageId: 'score-message-1',
+        sourceTimestampMs: 999,
+      },
+    ]);
+    app = buildApp({
+      receiptReader: {
+        load: async () => ({ proofMaterial: null, receipt }),
+      },
+    });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: `/v1/decision-receipts/${receipt.receiptId}`,
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      decisionAnchor: {
+        algorithm: 'sha256',
+        payloadHash: receipt.payloadHash,
+        receiptId: receipt.receiptId,
+      },
+      receipt: {
+        canonicalPayload: {
+          evidence: [{ sourceMessageId: 'score-message-1' }],
+        },
+      },
+      txlineAnchor: { status: 'pending' },
+    });
+  });
+
+  it('returns 404 for an unknown receipt', async () => {
+    app = buildApp({ receiptReader: { load: async () => null } });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/decision-receipts/missing',
+    });
+
+    expect(response.statusCode).toBe(404);
+    expect(response.json()).toEqual({
+      code: 'DECISION_RECEIPT_NOT_FOUND',
+      receiptId: 'missing',
     });
   });
 

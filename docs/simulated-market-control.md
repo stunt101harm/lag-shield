@@ -35,10 +35,11 @@ the same market lock. Under that lock the adapter:
 
 1. returns the byte-identical result for an existing request or raises an idempotency
    conflict when the payload changed;
-2. reads the latest market state and its exact strategy-decision payload;
+2. reads the latest market state, exact strategy-decision payload, and receipt that committed
+   atomically with that decision;
 3. computes the deterministic admission outcome;
-4. creates or reuses the decision's pending cryptographic receipt; and
-5. writes the complete order audit record before committing.
+4. verifies that the receipt belongs to the exact committed decision; and
+5. writes the complete order audit record with that receipt ID before committing.
 
 This serialization produces only two valid outcomes during a pause-versus-order race: the
 order commits first against the preceding `OPEN` decision, or it observes the committed
@@ -47,9 +48,11 @@ lock.
 
 Each version-2 order stores its admission latency, reason and explanation, request hash,
 market state/version, decision ID, circuit-breaker receipt ID, and replay namespace. The
-receipt initially contains the canonical SHA-256 hash of the complete strategy decision and
-has `pending` proof status. The proof worker can later upgrade that same receipt to
-`verified` without changing the order or decision identity.
+receipt is created with the decision—not on first order arrival—and contains the canonical
+SHA-256 hash of the complete strategy decision plus its exact persisted event provenance. It
+initially has `pending` proof status. The proof worker can later upgrade that same receipt to
+`verified` without changing the order or decision identity. See
+[decision receipts and TxLINE Solana proofs](proof-verification.md).
 
 ## Request and API
 
