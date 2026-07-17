@@ -1,6 +1,8 @@
 import {
   DeterministicReplayRunner,
   VirtualReplayClock,
+  buildMarketId,
+  consensusFormulaVersion,
   createNormalizedEvent,
   createReplayManifest,
   type JsonValue,
@@ -12,8 +14,20 @@ import {
 const fixtureId = 'seeded-world-cup-canada-japan';
 const competitionId = 'seeded-world-cup-2026';
 const startMs = Date.UTC(2026, 6, 17, 18);
+const seededMarketId = buildMarketId({
+  fixtureId,
+  inRunning: true,
+  outcomeNames: ['Canada', 'Draw', 'Japan'],
+  parameters: null,
+  period: 'full_time',
+  type: '1X2',
+});
 
 export const seededDemoStrategyConfiguration = Object.freeze({
+  consensusFormulaVersion,
+  minFreshBookmakers: 1,
+  probabilityScale: 1_000_000,
+  quoteStaleAfterMs: 5_000,
   pauseLagMs: 5_000,
   recoveryStableUpdates: 3,
   widenLagMs: 2_000,
@@ -45,6 +59,7 @@ function fixtureEvent(): NormalizedDomainEvent {
 
 function oddsEvent(
   input: Readonly<{
+    probabilities: readonly [number, number, number];
     prices: readonly [number, number, number];
     sequence: number;
     sourceId: string;
@@ -60,20 +75,36 @@ function oddsEvent(
       market: {
         gameState: 'in_play',
         inRunning: true,
-        marketId: 'seeded-match-winner',
+        marketId: seededMarketId,
         parameters: null,
         period: 'full_time',
         status: 'open',
         type: '1X2',
       },
       outcomes: [
-        { name: 'Canada', outcomeId: 'seeded-canada', price: input.prices[0] },
-        { name: 'Draw', outcomeId: 'seeded-draw', price: input.prices[1] },
-        { name: 'Japan', outcomeId: 'seeded-japan', price: input.prices[2] },
+        {
+          name: 'Canada',
+          outcomeId: 'seeded-canada',
+          price: input.prices[0],
+          reportedProbabilityMicros: input.probabilities[0],
+        },
+        {
+          name: 'Draw',
+          outcomeId: 'seeded-draw',
+          price: input.prices[1],
+          reportedProbabilityMicros: input.probabilities[1],
+        },
+        {
+          name: 'Japan',
+          outcomeId: 'seeded-japan',
+          price: input.prices[2],
+          reportedProbabilityMicros: input.probabilities[2],
+        },
       ],
       priceEncoding: 'txline-native-i32-v1',
+      probabilityEncoding: 'txline-pct-percent-3dp-v1',
     },
-    payloadVersion: 1,
+    payloadVersion: 2,
     receivedAtMs: input.timestampMs,
     sequence: input.sequence,
     source: 'simulation',
@@ -118,6 +149,7 @@ export function createSeededDemoBundle() {
   const events = [
     fixtureEvent(),
     oddsEvent({
+      probabilities: [400_000, 320_000, 280_000],
       prices: [2400, 3100, 2800],
       sequence: 1,
       sourceId: 'seed-odds-1',
@@ -130,12 +162,14 @@ export function createSeededDemoBundle() {
       timestampMs: startMs + 60_000,
     }),
     oddsEvent({
+      probabilities: [400_000, 320_000, 280_000],
       prices: [2400, 3100, 2800],
       sequence: 3,
       sourceId: 'seed-odds-stale',
       timestampMs: startMs + 63_000,
     }),
     oddsEvent({
+      probabilities: [600_000, 250_000, 150_000],
       prices: [1650, 3600, 5100],
       sequence: 4,
       sourceId: 'seed-odds-caught-up',
@@ -146,7 +180,7 @@ export function createSeededDemoBundle() {
     dataMode: 'seeded-simulation',
     events,
     fixture: { competitionId, fixtureId, scheduledAtMs: startMs },
-    normalizerVersion: 'seeded-demo-v1',
+    normalizerVersion: 'seeded-demo-v2-pct',
     oddsIntervals: [],
     orderingVersion: 'event-order-v1',
     sourceEndMs: startMs + 68_000,

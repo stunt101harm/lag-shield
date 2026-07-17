@@ -1,5 +1,6 @@
 import {
   buildRawIngestId,
+  buildMarketId,
   createNormalizedEvent,
   encodeKeyParts,
   stableHash,
@@ -32,6 +33,7 @@ export const rawTxLineOddsSchema = z
     MessageId: z.string().min(1),
     PriceNames: z.array(z.string().min(1)).default([]),
     Prices: z.array(z.number().int()).default([]),
+    Pct: z.array(z.union([z.literal('NA'), z.string().regex(/^\d+\.\d{3}$/)])).optional(),
     SuperOddsType: z.string().min(1),
     Ts: z.number().int().nonnegative(),
   })
@@ -43,6 +45,22 @@ export const rawTxLineOddsSchema = z
         message: 'PriceNames and Prices must have the same length.',
         path: ['Prices'],
       });
+    }
+    if (value.Pct && value.Pct.length !== value.PriceNames.length) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Pct and PriceNames must have the same length.',
+        path: ['Pct'],
+      });
+    }
+    for (const [index, percentage] of value.Pct?.entries() ?? []) {
+      if (percentage !== 'NA' && Number(percentage) > 100) {
+        context.addIssue({
+          code: 'custom',
+          message: 'Pct values must not exceed 100.000.',
+          path: ['Pct', index],
+        });
+      }
     }
   });
 
@@ -215,13 +233,25 @@ function quarantine(input: {
 }
 
 function marketId(raw: z.infer<typeof rawTxLineOddsSchema>): string {
-  const identity = {
-    fixtureId: raw.FixtureId,
+  return buildMarketId({
+    fixtureId: String(raw.FixtureId),
+    inRunning: raw.InRunning,
+    outcomeNames: [...raw.PriceNames].sort(),
     parameters: raw.MarketParameters ?? null,
     period: raw.MarketPeriod ?? null,
     type: raw.SuperOddsType,
-  };
-  return `mkt_${stableHash(identity).slice(0, 40)}`;
+  });
+}
+
+export function txLinePctToProbabilityMicros(value: string): number | null {
+  if (value === 'NA') return null;
+  const match = /^(\d+)\.(\d{3})$/.exec(value);
+  if (!match) throw new Error(`Invalid TxLINE Pct value: ${value}`);
+  const micros = Number(match[1]) * 10_000 + Number(match[2]) * 10;
+  if (!Number.isSafeInteger(micros) || micros < 0 || micros > 1_000_000) {
+    throw new Error(`TxLINE Pct value is outside 0.000 to 100.000: ${value}`);
+  }
+  return micros;
 }
 
 function outcomeId(market: string, name: string): string {
@@ -233,11 +263,13 @@ export function normalizeTxLinePayload(
   clock: Clock,
 ): NormalizeTxLineResult {
   txLineSourceSchema.parse(input.source);
-  const payloadVersion = input.payloadVersion ?? 1;
+  const payloadVersion = input.payloadVersion ?? (input.payloadKind === 'odds' ? 2 : 1);
   const receivedAtMs = input.receivedAtMs ?? clock.nowMs();
   const rawPayload = safeRawPayload(input.rawPayload);
 
-  if (payloadVersion !== 1) {
+  const supportedPayloadVersion =
+    payloadVersion === 1 || (input.payloadKind === 'odds' && payloadVersion === 2);
+  if (!supportedPayloadVersion) {
     return quarantine({
       code: 'unsupported_payload_version',
       issues: [`Unsupported payload version: ${payloadVersion}`],
@@ -323,7 +355,7 @@ export function normalizeTxLinePayload(
         scheduledAtMs: fixture.StartTime,
         status: gameState === 6 ? 'cancelled' : 'scheduled',
       },
-      payloadVersion,
+      payloadVersion: 1,
       receivedAtMs,
       sequence: input.sequence ?? 0,
       source: input.source,
@@ -357,7 +389,7 @@ export function normalizeTxLinePayload(
       sourceId: odds.MessageId,
       sourceTimestampMs: odds.Ts,
     });
-    const event = createNormalizedEvent({
+    const commonEvent = {
       fixtureId: String(odds.FixtureId),
       kind: 'odds.observed',
       payload: {
@@ -379,13 +411,29 @@ export function normalizeTxLinePayload(
         })),
         priceEncoding: 'txline-native-i32-v1',
       },
-      payloadVersion,
       receivedAtMs,
       sequence: input.sequence ?? 0,
       source: input.source,
       sourceId: odds.MessageId,
       sourceTimestampMs: odds.Ts,
-    });
+    } as const;
+    const event =
+      payloadVersion === 1
+        ? createNormalizedEvent({ ...commonEvent, payloadVersion: 1 })
+        : createNormalizedEvent({
+            ...commonEvent,
+            payload: {
+              ...commonEvent.payload,
+              outcomes: commonEvent.payload.outcomes.map((outcome, index) => ({
+                ...outcome,
+                reportedProbabilityMicros: odds.Pct
+                  ? txLinePctToProbabilityMicros(odds.Pct[index]!)
+                  : null,
+              })),
+              probabilityEncoding: 'txline-pct-percent-3dp-v1',
+            },
+            payloadVersion: 2,
+          });
     return { event, ok: true, raw };
   }
 
@@ -405,7 +453,7 @@ export function normalizeTxLinePayload(
   const raw = createRawInput({
     fixtureId: String(score.FixtureId),
     payloadKind: input.payloadKind,
-    payloadVersion,
+    payloadVersion: 1,
     rawPayload,
     receivedAtMs,
     source: input.source,
@@ -426,7 +474,7 @@ export function normalizeTxLinePayload(
       stats: score.Stats,
       statusId: score.StatusId ?? null,
     },
-    payloadVersion,
+    payloadVersion: 1,
     receivedAtMs,
     sequence: score.Seq,
     source: input.source,

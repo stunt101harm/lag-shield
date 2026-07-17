@@ -265,7 +265,9 @@ export const outcomeQuoteObservations = pgTable(
     outcomeName: text('outcome_name').notNull(),
     price: integer('price').notNull(),
     priceEncoding: text('price_encoding').notNull(),
+    probabilityEncoding: text('probability_encoding'),
     receivedAtMs: bigint('received_at_ms', { mode: 'number' }).notNull(),
+    reportedProbabilityMicros: integer('reported_probability_micros'),
     sequence: bigint('sequence', { mode: 'number' }).notNull(),
     source: eventSource('source').notNull(),
     sourceId: text('source_id').notNull(),
@@ -274,6 +276,10 @@ export const outcomeQuoteObservations = pgTable(
   },
   (table) => [
     check('quotes_received_at_check', sql`${table.receivedAtMs} >= 0`),
+    check(
+      'quotes_reported_probability_check',
+      sql`${table.reportedProbabilityMicros} IS NULL OR (${table.reportedProbabilityMicros} >= 0 AND ${table.reportedProbabilityMicros} <= 1000000)`,
+    ),
     check('quotes_sequence_check', sql`${table.sequence} >= 0`),
     check('quotes_source_timestamp_check', sql`${table.sourceTimestampMs} >= 0`),
     primaryKey({ columns: [table.eventId, table.outcomeId] }),

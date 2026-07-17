@@ -42,6 +42,7 @@ function normalizeOdds(overrides: Record<string, unknown> = {}) {
         FixtureId: 42,
         InRunning: true,
         MessageId: 'odds-1',
+        Pct: ['40.000', '30.000', '30.000'],
         PriceNames: ['Home', 'Draw', 'Away'],
         Prices: [2100, 3200, 2900],
         SuperOddsType: '1X2',
@@ -130,14 +131,25 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
     ).resolves.toMatchObject({ status: 'duplicate' });
 
     const counts = await client!<
-      { domain_count: number; quote_count: number; raw_count: number }[]
+      {
+        domain_count: number;
+        probability_count: number;
+        quote_count: number;
+        raw_count: number;
+      }[]
     >`
       SELECT
         (SELECT count(*)::int FROM raw_ingest_records) AS raw_count,
         (SELECT count(*)::int FROM domain_events) AS domain_count,
-        (SELECT count(*)::int FROM outcome_quote_observations) AS quote_count
+        (SELECT count(*)::int FROM outcome_quote_observations) AS quote_count,
+        (SELECT count(reported_probability_micros)::int FROM outcome_quote_observations) AS probability_count
     `;
-    expect(counts[0]).toEqual({ domain_count: 1, quote_count: 3, raw_count: 1 });
+    expect(counts[0]).toEqual({
+      domain_count: 1,
+      probability_count: 3,
+      quote_count: 3,
+      raw_count: 1,
+    });
 
     const conflicting = normalizeOdds({ Prices: [9999, 3200, 2900] });
     await expect(
@@ -264,7 +276,7 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
         fixtureId: historical.event.fixtureId,
         scheduledAtMs: 1_699_999_000_000,
       },
-      normalizerVersion: 'txline-normalizer-v1',
+      normalizerVersion: 'txline-normalizer-v2-pct',
       oddsIntervals: [
         ...planHistoricalOddsIntervals({
           endMs: historical.event.sourceTimestampMs,

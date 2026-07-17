@@ -6,6 +6,8 @@ export const lagShieldIdentity = Object.freeze({
 
 export * from './events.js';
 export * from './json.js';
+export * from './market-consensus.js';
+export * from './market.js';
 export * from './models.js';
 export * from './replay-clock.js';
 export * from './replay-runner.js';

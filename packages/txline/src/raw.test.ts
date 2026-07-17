@@ -8,6 +8,7 @@ import {
   validOddsPayload,
 } from './__fixtures__/raw-payloads.js';
 import { normalizeTxLinePayload } from './raw.js';
+import { txLinePctToProbabilityMicros } from './raw.js';
 
 const clock = new FixedClock(1_800_000_000_000);
 
@@ -19,11 +20,17 @@ describe('TxLINE raw normalization', () => {
     );
 
     expect(result.ok).toBe(true);
-    if (!result.ok) return;
+    if (
+      !result.ok ||
+      result.event.kind !== 'odds.observed' ||
+      result.event.payloadVersion !== 2
+    )
+      return;
     expect(normalizedDomainEventSchema.parse(result.event)).toEqual(result.event);
     expect(result.event).toMatchObject({
       fixtureId: '18241006',
       kind: 'odds.observed',
+      payloadVersion: 2,
       receivedAtMs: 1_800_000_000_000,
       source: 'txline-live',
     });
@@ -31,6 +38,12 @@ describe('TxLINE raw normalization', () => {
     expect(result.event.payload.outcomes.map(({ price }) => price)).toEqual([
       2100, 3300, 2900,
     ]);
+    expect(
+      result.event.payload.outcomes.map(
+        ({ reportedProbabilityMicros }) => reportedProbabilityMicros,
+      ),
+    ).toEqual([526_320, 250_000, 223_680]);
+    expect(result.event.payload.probabilityEncoding).toBe('txline-pct-percent-3dp-v1');
     expect(result.event.payload.market).toMatchObject({
       parameters: null,
       period: null,
@@ -108,7 +121,13 @@ describe('TxLINE raw normalization', () => {
   });
 
   it('accepts an official odds record with omitted optional price arrays', () => {
-    const { PriceNames: _names, Prices: _prices, ...withoutPrices } = validOddsPayload;
+    const {
+      Pct: _pct,
+      PriceNames: _names,
+      Prices: _prices,
+      ...withoutPrices
+    } = validOddsPayload;
+    void _pct;
     void _names;
     void _prices;
     const result = normalizeTxLinePayload(
@@ -120,6 +139,30 @@ describe('TxLINE raw normalization', () => {
     if (!result.ok || result.event.kind !== 'odds.observed') return;
     expect(result.event.payload.market.status).toBe('suspended');
     expect(result.event.payload.outcomes).toEqual([]);
+  });
+
+  it('converts documented three-decimal Pct strings without floating-point drift', () => {
+    expect(txLinePctToProbabilityMicros('52.632')).toBe(526_320);
+    expect(txLinePctToProbabilityMicros('0.001')).toBe(10);
+    expect(txLinePctToProbabilityMicros('100.000')).toBe(1_000_000);
+    expect(txLinePctToProbabilityMicros('NA')).toBeNull();
+  });
+
+  it('can still decode an explicitly versioned v1 odds record during migration', () => {
+    const result = normalizeTxLinePayload(
+      {
+        payloadKind: 'odds',
+        payloadVersion: 1,
+        rawPayload: validOddsPayload,
+        source: 'txline-historical',
+      },
+      clock,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.event.kind !== 'odds.observed') return;
+    expect(result.event.payloadVersion).toBe(1);
+    expect('probabilityEncoding' in result.event.payload).toBe(false);
   });
 
   it.each([

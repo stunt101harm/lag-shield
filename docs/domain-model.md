@@ -20,8 +20,10 @@ The three TxLINE paths produce the same payload contract. `receivedAtMs` is oper
 metadata and never participates in identity or replay order.
 
 Raw odds remain in TxLINE's native signed-integer representation and are tagged
-`txline-native-i32-v1`. A later pricing layer must decode them from an explicitly verified
-TxLINE specification; the ingest layer does not guess a scale.
+`txline-native-i32-v1`; the ingest layer does not guess their undocumented scale. Odds payload
+version 2 also captures TxLINE's documented three-decimal `Pct` strings as exact integer
+millionths under `txline-pct-percent-3dp-v1`. Version 1 remains readable for replay migration.
+See [market mathematics](market-consensus.md).
 
 Malformed, unknown, and unsupported-version records do not crash the agent. They enter
 `raw_ingest_records` with `status = quarantined`, a stable identity, the untouched JSON

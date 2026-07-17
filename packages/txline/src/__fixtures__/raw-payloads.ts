@@ -4,6 +4,7 @@ export const validOddsPayload = {
   FixtureId: 18_241_006,
   InRunning: true,
   MessageId: 'odds-message-42',
+  Pct: ['52.632', '25.000', '22.368'],
   PriceNames: ['Canada', 'Draw', 'Japan'],
   Prices: [2100, 3300, 2900],
   SuperOddsType: '1X2',

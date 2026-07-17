@@ -55,6 +55,10 @@ const outcomeQuoteSchema = z
   })
   .strict();
 
+const outcomeQuoteV2Schema = outcomeQuoteSchema.extend({
+  reportedProbabilityMicros: z.number().int().min(0).max(1_000_000).nullable(),
+});
+
 export const oddsObservedPayloadSchema = z
   .object({
     bookmaker: z
@@ -76,6 +80,11 @@ export const oddsObservedPayloadSchema = z
     priceEncoding: z.literal('txline-native-i32-v1'),
   })
   .strict();
+
+export const oddsObservedPayloadV2Schema = oddsObservedPayloadSchema.extend({
+  outcomes: z.array(outcomeQuoteV2Schema).max(100),
+  probabilityEncoding: z.literal('txline-pct-percent-3dp-v1'),
+});
 
 const scoreStatSchema = z
   .object({
@@ -101,7 +110,6 @@ const envelopeFields = {
   eventId: identifierSchema,
   fixtureId: identifierSchema,
   idempotencyKey: z.string().min(1).max(2_048),
-  payloadVersion: z.literal(1),
   receivedAtMs: epochMillisecondsSchema,
   sequence: z.number().int().nonnegative().safe(),
   source: domainEventSourceSchema,
@@ -110,12 +118,13 @@ const envelopeFields = {
   sourceTimestampMs: epochMillisecondsSchema,
 } as const;
 
-const eventUnionSchema = z.discriminatedUnion('kind', [
+const eventUnionSchema = z.union([
   z
     .object({
       ...envelopeFields,
       kind: z.literal('fixture.observed'),
       payload: fixtureObservedPayloadSchema,
+      payloadVersion: z.literal(1),
     })
     .strict(),
   z
@@ -123,6 +132,15 @@ const eventUnionSchema = z.discriminatedUnion('kind', [
       ...envelopeFields,
       kind: z.literal('odds.observed'),
       payload: oddsObservedPayloadSchema,
+      payloadVersion: z.literal(1),
+    })
+    .strict(),
+  z
+    .object({
+      ...envelopeFields,
+      kind: z.literal('odds.observed'),
+      payload: oddsObservedPayloadV2Schema,
+      payloadVersion: z.literal(2),
     })
     .strict(),
   z
@@ -130,6 +148,7 @@ const eventUnionSchema = z.discriminatedUnion('kind', [
       ...envelopeFields,
       kind: z.literal('score.observed'),
       payload: scoreObservedPayloadSchema,
+      payloadVersion: z.literal(1),
     })
     .strict(),
 ]);

@@ -66,6 +66,10 @@ For completed-fixture hydration, deterministic manifests, virtual-clock replay, 
 and the always-available seeded judge demo, see
 [historical replay operations](docs/historical-replay.md).
 
+For exact `Pct` conversion, residual normalization, robust median/MAD features, reaction
+latency, and market-key rules, see
+[market identity and consensus mathematics](docs/market-consensus.md).
+
 ## Quality gates
 
 ```bash
