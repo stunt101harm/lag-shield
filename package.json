@@ -20,6 +20,8 @@
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "lint": "turbo run lint",
+    "replay:seeded": "pnpm --filter @lagshield/agent replay:seeded",
+    "replay:hydrate": "pnpm --filter @lagshield/agent replay:hydrate",
     "test": "turbo run test",
     "test:coverage": "turbo run test:coverage",
     "txline": "pnpm --filter @lagshield/txline cli",

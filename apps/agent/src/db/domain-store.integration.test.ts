@@ -1,9 +1,12 @@
 import {
   FixedClock,
+  createReplayManifest,
+  createReplayRun,
   createStrategyDecision,
+  replayRunSchema,
   type NormalizedDomainEvent,
 } from '@lagshield/core';
-import { normalizeTxLinePayload } from '@lagshield/txline';
+import { normalizeTxLinePayload, planHistoricalOddsIntervals } from '@lagshield/txline';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
@@ -14,6 +17,7 @@ import {
   IdempotencyConflictError,
   PostgresDomainStore,
 } from './domain-store.js';
+import { PostgresReplayStore } from './replay-store.js';
 import { ingestTxLinePayload } from '../ingest/txline-ingest.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -96,6 +100,7 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
         market_control_states,
         strategy_decisions,
         replay_runs,
+        replay_manifests,
         fixture_score_state,
         score_events,
         outcome_quote_observations,
@@ -197,6 +202,130 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
     await expect(
       requireStore().listFixtureEvents({ fixtureId: '42', limit: 501 }),
     ).rejects.toThrow('between 1 and 500');
+  });
+
+  it('expires retained historical payloads without losing identity or mutating live projections', async () => {
+    const historical = normalizeScore({
+      away: 0,
+      home: 1,
+      seq: 77,
+      source: 'txline-historical',
+    });
+    const retentionExpiresAtMs = clock.nowMs() + 10_000;
+    const raw = { ...historical.raw, retentionExpiresAtMs };
+
+    await expect(
+      requireStore().appendEvent({ event: historical.event, raw }),
+    ).resolves.toMatchObject({ status: 'inserted' });
+    const projections = await client!<{ count: number }[]>`
+      SELECT count(*)::int AS count FROM fixture_score_state WHERE fixture_id = '42'
+    `;
+    expect(projections[0]?.count).toBe(0);
+    await expect(
+      requireStore().purgeExpiredRawPayloads({
+        limit: 100,
+        nowMs: retentionExpiresAtMs - 1,
+      }),
+    ).resolves.toBe(0);
+    await expect(
+      requireStore().purgeExpiredRawPayloads({
+        limit: 100,
+        nowMs: retentionExpiresAtMs,
+      }),
+    ).resolves.toBe(1);
+    const retained = await client!<
+      { payload_retained: boolean; raw_payload: unknown; raw_payload_hash: string }[]
+    >`
+      SELECT payload_retained, raw_payload, raw_payload_hash
+      FROM raw_ingest_records
+      WHERE ingest_id = ${raw.ingestId}
+    `;
+    expect(retained[0]).toMatchObject({
+      payload_retained: false,
+      raw_payload: null,
+    });
+    expect(retained[0]?.raw_payload_hash).toMatch(/^[a-f0-9]{64}$/);
+    await expect(
+      requireStore().appendEvent({ event: historical.event, raw }),
+    ).resolves.toMatchObject({ status: 'duplicate' });
+  });
+
+  it('persists deterministic replay manifests and enforces run namespaces and transitions', async () => {
+    const historical = normalizeScore({
+      away: 0,
+      home: 1,
+      seq: 78,
+      source: 'txline-historical',
+    });
+    const manifest = createReplayManifest({
+      events: [historical.event],
+      fixture: {
+        competitionId: '72',
+        fixtureId: historical.event.fixtureId,
+        scheduledAtMs: 1_699_999_000_000,
+      },
+      normalizerVersion: 'txline-normalizer-v1',
+      oddsIntervals: [
+        ...planHistoricalOddsIntervals({
+          endMs: historical.event.sourceTimestampMs,
+          startMs: historical.event.sourceTimestampMs,
+        }),
+      ],
+      orderingVersion: 'event-order-v1',
+      sourceEndMs: historical.event.sourceTimestampMs,
+      sourceStartMs: historical.event.sourceTimestampMs,
+      strategyConfiguration: { lagPauseMs: 5_000 },
+      strategyVersion: 'lag-shield-v1',
+    });
+    const replayStore = new PostgresReplayStore(client!);
+    const storedManifest = {
+      createdAtMs: clock.nowMs(),
+      manifest,
+      retentionExpiresAtMs: clock.nowMs() + 60_000,
+    };
+    await expect(replayStore.saveReplayManifest(storedManifest)).resolves.toMatchObject({
+      status: 'inserted',
+    });
+    await expect(replayStore.saveReplayManifest(storedManifest)).resolves.toMatchObject({
+      status: 'duplicate',
+    });
+
+    const pending = createReplayRun({
+      manifest,
+      runId: 'integration-run-1',
+      speed: 'maximum',
+      startedAtMs: clock.nowMs(),
+    });
+    await expect(replayStore.createReplayRun(pending)).resolves.toMatchObject({
+      status: 'inserted',
+    });
+    await expect(replayStore.createReplayRun(pending)).resolves.toMatchObject({
+      status: 'duplicate',
+    });
+    const running = replayRunSchema.parse({ ...pending, status: 'running' });
+    await expect(replayStore.updateReplayRun(running)).resolves.toMatchObject({
+      status: 'inserted',
+    });
+    const completed = replayRunSchema.parse({
+      ...running,
+      completedAtMs: clock.nowMs() + 1,
+      eventCount: 1,
+      lastEventId: historical.event.eventId,
+      status: 'completed',
+    });
+    await expect(replayStore.updateReplayRun(completed)).resolves.toMatchObject({
+      status: 'inserted',
+    });
+    await expect(replayStore.updateReplayRun(running)).rejects.toThrow(
+      'cannot move from completed to running',
+    );
+    const rows = await client!<{ namespace: string; status: string }[]>`
+      SELECT namespace, status FROM replay_runs WHERE run_id = ${completed.runId}
+    `;
+    expect(rows[0]).toEqual({
+      namespace: 'replay:integration-run-1',
+      status: 'completed',
+    });
   });
 
   it('restores decision state after reconnect and rejects stale state versions', async () => {

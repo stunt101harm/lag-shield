@@ -62,15 +62,16 @@ flowchart LR
   B -->|valid| T["Single PostgreSQL transaction"]
   T --> R["Immutable raw record"]
   T --> E["Immutable domain event"]
-  T --> P["Latest-state projections"]
+  T -->|live / snapshot only| P["Latest-state projections"]
   E --> D["Deterministic strategy decision"]
   D --> S["Versioned market control state"]
   D --> C["Receipt / simulated order"]
 ```
 
-The raw record, normalized event, and projections commit together. A failed projection
-cannot leave an accepted raw record without its event. Projection upserts compare the full
-event-order tuple, so a late historical record is retained in history but cannot overwrite a
+The raw record and normalized event commit together. Only `txline-live` and
+`txline-snapshot` inputs may update operational live projections. Historical and simulation
+facts remain replayable in the immutable event lake but cannot mutate live state. Projection
+upserts compare the full event-order tuple, so out-of-order real-time records cannot overwrite
 newer live state.
 
 Decision writes take a transaction-scoped PostgreSQL advisory lock per market. The caller
@@ -85,7 +86,11 @@ supplies `expectedStateVersion`, and stale writers fail with `ConcurrentStateErr
 | Source facts       | `raw_ingest_records`, `domain_events`                                                      | Untouched input, quarantine evidence, normalized replay log     |
 | Sports projections | `fixtures`, `markets`, `outcome_quote_observations`, `score_events`, `fixture_score_state` | Current fixture/market/score state plus quote and score history |
 | Agent output       | `strategy_decisions`, `market_control_states`, `decision_receipts`                         | Auditable actions, restart state, and proof lifecycle           |
-| Evaluation         | `replay_runs`, `simulated_orders`                                                          | Reproducible simulations and paper execution records            |
+| Evaluation         | `replay_manifests`, `replay_runs`, `simulated_orders`                                      | Reproducible, namespaced simulations and paper execution        |
+
+Historical raw payloads may carry `retention_expires_at_ms`. A bounded purge nulls expired
+JSON but preserves its canonical SHA-256 hash, normalized event, and ingest identity, so a
+later retry is still deduplicated without retaining redistributable source payloads.
 
 Dashboard reads must be bounded. `listFixtureEvents` accepts 1–500 rows and uses a stable
 cursor; its ordering columns are covered by `domain_events_fixture_order_idx`. Quote,

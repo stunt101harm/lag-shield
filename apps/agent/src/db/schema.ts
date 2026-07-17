@@ -2,6 +2,7 @@ import type {
   DecisionReceipt,
   JsonValue,
   NormalizedDomainEvent,
+  ReplayManifest,
   ReplayRun,
   SimulatedOrder,
   StrategyDecision,
@@ -89,11 +90,14 @@ export const rawIngestRecords = pgTable(
     idempotencyKey: text('idempotency_key').notNull(),
     ingestId: text('ingest_id').primaryKey(),
     payloadKind: text('payload_kind').notNull(),
+    payloadRetained: boolean('payload_retained').notNull().default(true),
     payloadVersion: integer('payload_version').notNull(),
     quarantineCode: text('quarantine_code'),
     quarantineIssues: jsonb('quarantine_issues').$type<readonly string[]>(),
-    rawPayload: jsonb('raw_payload').$type<JsonValue>().notNull(),
+    rawPayload: jsonb('raw_payload').$type<JsonValue>(),
+    rawPayloadHash: text('raw_payload_hash'),
     receivedAtMs: bigint('received_at_ms', { mode: 'number' }).notNull(),
+    retentionExpiresAtMs: bigint('retention_expires_at_ms', { mode: 'number' }),
     source: eventSource('source').notNull(),
     sourceId: text('source_id').notNull(),
     sourceTimestampMs: bigint('source_timestamp_ms', { mode: 'number' }),
@@ -103,12 +107,29 @@ export const rawIngestRecords = pgTable(
     check('raw_ingest_payload_version_check', sql`${table.payloadVersion} > 0`),
     check('raw_ingest_received_at_check', sql`${table.receivedAtMs} >= 0`),
     check(
+      'raw_ingest_payload_retention_check',
+      sql`(${table.payloadRetained} AND ${table.rawPayload} IS NOT NULL)
+        OR (NOT ${table.payloadRetained} AND ${table.rawPayload} IS NULL AND ${table.rawPayloadHash} IS NOT NULL)`,
+    ),
+    check(
+      'raw_ingest_payload_hash_check',
+      sql`${table.rawPayloadHash} IS NULL OR ${table.rawPayloadHash} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'raw_ingest_retention_expiry_check',
+      sql`${table.retentionExpiresAtMs} IS NULL OR ${table.retentionExpiresAtMs} >= ${table.receivedAtMs}`,
+    ),
+    check(
       'raw_ingest_source_timestamp_check',
       sql`${table.sourceTimestampMs} IS NULL OR ${table.sourceTimestampMs} >= 0`,
     ),
     uniqueIndex('raw_ingest_idempotency_uidx').on(table.idempotencyKey),
     index('raw_ingest_status_received_idx').on(table.status, table.receivedAtMs),
     index('raw_ingest_fixture_received_idx').on(table.fixtureId, table.receivedAtMs),
+    index('raw_ingest_retention_idx').on(
+      table.payloadRetained,
+      table.retentionExpiresAtMs,
+    ),
   ],
 );
 
@@ -437,6 +458,39 @@ export const decisionReceipts = pgTable(
   ],
 );
 
+export const replayManifests = pgTable(
+  'replay_manifests',
+  {
+    createdAtMs: bigint('created_at_ms', { mode: 'number' }).notNull(),
+    eventCount: bigint('event_count', { mode: 'number' }).notNull(),
+    eventSequenceHash: text('event_sequence_hash').notNull(),
+    fixtureId: text('fixture_id').notNull(),
+    inputHash: text('input_hash').notNull(),
+    manifestId: text('manifest_id').primaryKey(),
+    payload: jsonb('payload').$type<ReplayManifest>().notNull(),
+    retentionExpiresAtMs: bigint('retention_expires_at_ms', { mode: 'number' }),
+    sourceEndMs: bigint('source_end_ms', { mode: 'number' }).notNull(),
+    sourceStartMs: bigint('source_start_ms', { mode: 'number' }).notNull(),
+  },
+  (table) => [
+    check('replay_manifests_created_at_check', sql`${table.createdAtMs} >= 0`),
+    check('replay_manifests_event_count_check', sql`${table.eventCount} >= 0`),
+    check(
+      'replay_manifests_hashes_check',
+      sql`${table.inputHash} ~ '^[a-f0-9]{64}$' AND ${table.eventSequenceHash} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'replay_manifests_source_range_check',
+      sql`${table.sourceStartMs} >= 0 AND ${table.sourceEndMs} >= ${table.sourceStartMs}`,
+    ),
+    check(
+      'replay_manifests_retention_check',
+      sql`${table.retentionExpiresAtMs} IS NULL OR ${table.retentionExpiresAtMs} >= ${table.createdAtMs}`,
+    ),
+    index('replay_manifests_fixture_source_idx').on(table.fixtureId, table.sourceStartMs),
+  ],
+);
+
 export const replayRuns = pgTable(
   'replay_runs',
   {
@@ -444,14 +498,32 @@ export const replayRuns = pgTable(
     configHash: text('config_hash').notNull(),
     eventCount: bigint('event_count', { mode: 'number' }).notNull(),
     inputFixtureId: text('input_fixture_id').notNull(),
+    inputHash: text('input_hash').notNull(),
     lastEventId: text('last_event_id'),
+    manifestId: text('manifest_id')
+      .notNull()
+      .references(() => replayManifests.manifestId, { onDelete: 'restrict' }),
+    namespace: text('namespace').notNull(),
     payload: jsonb('payload').$type<ReplayRun>().notNull(),
     runId: text('run_id').primaryKey(),
+    speed: text('speed').notNull(),
     startedAtMs: bigint('started_at_ms', { mode: 'number' }).notNull(),
     status: replayStatus('status').notNull(),
   },
   (table) => [
     check('replay_runs_event_count_check', sql`${table.eventCount} >= 0`),
+    check(
+      'replay_runs_hashes_check',
+      sql`${table.configHash} ~ '^[a-f0-9]{64}$' AND ${table.inputHash} ~ '^[a-f0-9]{64}$'`,
+    ),
+    check(
+      'replay_runs_namespace_check',
+      sql`${table.namespace} = 'replay:' || ${table.runId}`,
+    ),
+    check(
+      'replay_runs_speed_check',
+      sql`${table.speed} = 'maximum' OR ${table.speed} ~ '^[0-9]+(\\.[0-9]+)?$'`,
+    ),
     check('replay_runs_started_at_check', sql`${table.startedAtMs} >= 0`),
     check(
       'replay_runs_completed_at_check',
@@ -462,6 +534,7 @@ export const replayRuns = pgTable(
       table.startedAtMs.desc(),
     ),
     index('replay_runs_status_started_idx').on(table.status, table.startedAtMs),
+    uniqueIndex('replay_runs_namespace_uidx').on(table.namespace),
   ],
 );
 

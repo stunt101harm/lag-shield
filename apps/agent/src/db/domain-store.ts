@@ -3,6 +3,7 @@ import {
   buildRawIngestId,
   canonicalJson,
   normalizedDomainEventSchema,
+  stableHash,
   strategyDecisionSchema,
   toJsonValue,
   type AppendResult,
@@ -63,13 +64,19 @@ async function existingRawMatches(
   sql: Transaction,
   raw: RawIngestInput,
 ): Promise<boolean> {
-  const rows = await sql<{ raw_payload: unknown }[]>`
-    SELECT raw_payload
+  const rows = await sql<
+    { payload_retained: boolean; raw_payload: unknown; raw_payload_hash: string | null }[]
+  >`
+    SELECT payload_retained, raw_payload, raw_payload_hash
     FROM raw_ingest_records
     WHERE idempotency_key = ${raw.idempotencyKey}
   `;
   const existing = rows[0];
   if (!existing) return false;
+  if (existing.raw_payload_hash) {
+    return existing.raw_payload_hash === stableHash(raw.rawPayload);
+  }
+  if (!existing.payload_retained || existing.raw_payload === null) return false;
   return (
     canonicalJson(toJsonValue(existing.raw_payload)) === canonicalJson(raw.rawPayload)
   );
@@ -98,9 +105,12 @@ async function insertRaw(
       fixture_id,
       payload_kind,
       payload_version,
+      payload_retained,
       source_timestamp_ms,
       received_at_ms,
+      retention_expires_at_ms,
       raw_payload,
+      raw_payload_hash,
       status,
       quarantine_code,
       quarantine_issues
@@ -112,9 +122,12 @@ async function insertRaw(
       ${raw.fixtureId},
       ${raw.payloadKind},
       ${raw.payloadVersion},
+      TRUE,
       ${raw.sourceTimestampMs},
       ${raw.receivedAtMs},
+      ${raw.retentionExpiresAtMs ?? null},
       ${jsonParameter(raw.rawPayload)}::jsonb,
+      ${stableHash(raw.rawPayload)},
       ${options.status},
       ${quarantineCode},
       ${quarantineIssues}::jsonb
@@ -518,7 +531,12 @@ export class PostgresDomainStore implements DomainStore {
         throw new IdempotencyConflictError(event.idempotencyKey);
       }
 
-      await applyProjection(transaction, event);
+      // Historical and synthetic events remain in the immutable event lake, but only
+      // real-time TxLINE inputs are allowed to mutate operational live projections.
+      // Replay strategies receive a run-scoped namespace through the replay runner.
+      if (event.source === 'txline-live' || event.source === 'txline-snapshot') {
+        await applyProjection(transaction, event);
+      }
       return { recordId: event.eventId, status: 'inserted' } as const;
     });
   }
@@ -536,6 +554,38 @@ export class PostgresDomainStore implements DomainStore {
         status: inserted ? 'quarantined' : 'duplicate',
       } as const;
     });
+  }
+
+  async purgeExpiredRawPayloads(
+    input: Readonly<{
+      limit: number;
+      nowMs: number;
+    }>,
+  ): Promise<number> {
+    assertBoundedQueryLimit(input.limit, 10_000);
+    if (!Number.isSafeInteger(input.nowMs) || input.nowMs < 0) {
+      throw new Error('Retention purge nowMs must be a non-negative safe integer.');
+    }
+    const purged = await this.sql<{ ingest_id: string }[]>`
+      WITH candidates AS (
+        SELECT ingest_id
+        FROM raw_ingest_records
+        WHERE source = 'txline-historical'
+          AND payload_retained = TRUE
+          AND raw_payload_hash IS NOT NULL
+          AND retention_expires_at_ms IS NOT NULL
+          AND retention_expires_at_ms <= ${input.nowMs}
+        ORDER BY retention_expires_at_ms, ingest_id
+        LIMIT ${input.limit}
+        FOR UPDATE SKIP LOCKED
+      )
+      UPDATE raw_ingest_records AS raw
+      SET raw_payload = NULL, payload_retained = FALSE
+      FROM candidates
+      WHERE raw.ingest_id = candidates.ingest_id
+      RETURNING raw.ingest_id
+    `;
+    return purged.length;
   }
 
   async appendDecision(input: StrategyDecision): Promise<AppendResult> {

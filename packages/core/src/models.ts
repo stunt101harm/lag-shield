@@ -109,12 +109,32 @@ export const replayRunSchema = z
     configHash: z.string().regex(/^[a-f0-9]{64}$/),
     eventCount: z.number().int().nonnegative(),
     inputFixtureId: identifierSchema,
+    inputHash: z.string().regex(/^[a-f0-9]{64}$/),
     lastEventId: identifierSchema.nullable(),
+    manifestId: identifierSchema,
+    namespace: z.string().min(1).max(1_024),
     runId: identifierSchema,
+    speed: z.union([z.number().positive().finite(), z.literal('maximum')]),
     startedAtMs: epochMillisecondsSchema,
     status: z.enum(['pending', 'running', 'completed', 'failed']),
   })
-  .strict();
+  .strict()
+  .superRefine((run, context) => {
+    if (run.namespace !== `replay:${run.runId}`) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Replay namespace must be derived from its run ID.',
+        path: ['namespace'],
+      });
+    }
+    if (run.status === 'completed' && run.completedAtMs === null) {
+      context.addIssue({
+        code: 'custom',
+        message: 'Completed replay runs require completedAtMs.',
+        path: ['completedAtMs'],
+      });
+    }
+  });
 export type ReplayRun = z.infer<typeof replayRunSchema>;
 
 export const simulatedOrderSchema = z

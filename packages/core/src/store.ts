@@ -10,6 +10,7 @@ export type RawIngestInput = Readonly<{
   payloadVersion: number;
   rawPayload: JsonValue;
   receivedAtMs: number;
+  retentionExpiresAtMs?: number | null;
   source: DomainEventSource;
   sourceId: string;
   sourceTimestampMs: number | null;
@@ -44,6 +45,9 @@ export interface DomainStore {
       limit: number;
     }>,
   ): Promise<FixtureEventPage>;
+  purgeExpiredRawPayloads(
+    input: Readonly<{ limit: number; nowMs: number }>,
+  ): Promise<number>;
   quarantine(input: QuarantineInput): Promise<AppendResult>;
 }
 

@@ -62,10 +62,17 @@ Once activated, see [live ingestion operations](docs/live-ingestion.md) for unat
 and score streams, recovery semantics, metrics, graceful shutdown, and the credential-gated
 stream smoke command.
 
+For completed-fixture hydration, deterministic manifests, virtual-clock replay, retention,
+and the always-available seeded judge demo, see
+[historical replay operations](docs/historical-replay.md).
+
 ## Quality gates
 
 ```bash
 pnpm check
+
+# Deterministic demo fallback when no match is live
+pnpm replay:seeded
 ```
 
 This runs formatting checks, ESLint, strict TypeScript, unit tests, and production builds

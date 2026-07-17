@@ -3,6 +3,7 @@ export * from './client.js';
 export * from './config.js';
 export * from './credentials.js';
 export * from './errors.js';
+export * from './historical.js';
 export * from './live.js';
 export * from './network.js';
 export * from './raw.js';

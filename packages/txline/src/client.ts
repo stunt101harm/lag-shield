@@ -1,6 +1,10 @@
 import type { TxLineNetworkConfig } from './config.js';
 import { txLineHttpError } from './errors.js';
 import {
+  assertHistoricalOddsInterval,
+  type HistoricalOddsInterval,
+} from './historical.js';
+import {
   activationResponseSchema,
   fixtureSnapshotSchema,
   guestSessionSchema,
@@ -14,6 +18,18 @@ export type TxLineFetch = (
 ) => Promise<Response>;
 
 export type TxLineStreamKind = 'odds' | 'scores';
+
+function assertNonNegativeInteger(label: string, value: number): void {
+  if (!Number.isSafeInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative safe integer.`);
+  }
+}
+
+function assertArray(value: unknown, label: string): readonly unknown[] {
+  if (!Array.isArray(value))
+    throw new Error(`TxLINE ${label} response must be an array.`);
+  return value;
+}
 
 export class TxLineApiClient {
   readonly #apiToken: string | undefined;
@@ -69,6 +85,34 @@ export class TxLineApiClient {
   async discoverWorldCupFixtures(): Promise<readonly TxLineFixture[]> {
     const fixtures = await this.fetchFixtures();
     return fixtures.filter(isWorldCupFixture);
+  }
+
+  async fetchHistoricalScores(fixtureId: number): Promise<readonly unknown[]> {
+    assertNonNegativeInteger('fixtureId', fixtureId);
+    const url = new URL(`/api/scores/historical/${fixtureId}`, this.#config.apiOrigin);
+    return assertArray(
+      await this.#requestJson(url, `historical scores for fixture ${fixtureId}`),
+      'historical scores',
+    );
+  }
+
+  async fetchHistoricalOddsInterval(
+    interval: HistoricalOddsInterval,
+    options: Readonly<{ fixtureId?: number }> = {},
+  ): Promise<readonly unknown[]> {
+    assertHistoricalOddsInterval(interval);
+    const url = new URL(
+      `/api/odds/updates/${interval.epochDay}/${interval.hourOfDay}/${interval.interval}`,
+      this.#config.apiOrigin,
+    );
+    if (options.fixtureId !== undefined) {
+      assertNonNegativeInteger('fixtureId', options.fixtureId);
+      url.searchParams.set('fixtureId', String(options.fixtureId));
+    }
+    return assertArray(
+      await this.#requestJson(url, `historical odds interval ${interval.startMs}`),
+      'historical odds',
+    );
   }
 
   async openDataStream(

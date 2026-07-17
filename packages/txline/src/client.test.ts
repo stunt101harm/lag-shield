@@ -114,4 +114,40 @@ describe('TxLineApiClient', () => {
     expect(headers.get('Authorization')).toBe('Bearer guest-jwt');
     expect(headers.has('X-Api-Token')).toBe(false);
   });
+
+  it('fetches official historical score and filtered odds routes', async () => {
+    const fetchMock = vi
+      .fn<TxLineFetch>()
+      .mockResolvedValueOnce(jsonResponse({ token: 'guest-jwt' }))
+      .mockResolvedValueOnce(jsonResponse([{ fixtureId: 42, seq: 1 }]))
+      .mockResolvedValueOnce(jsonResponse([{ FixtureId: 42, MessageId: 'odds-1' }]));
+    const client = new TxLineApiClient({
+      apiToken: 'private-api-token',
+      config: getTxLineConfig('devnet'),
+      fetch: fetchMock,
+    });
+
+    await expect(client.fetchHistoricalScores(42)).resolves.toHaveLength(1);
+    const intervalStartMs =
+      20_650 * 86_400_000 + 12 * 60 * 60 * 1_000 + 4 * 5 * 60 * 1_000;
+    await expect(
+      client.fetchHistoricalOddsInterval(
+        {
+          endMs: intervalStartMs + 5 * 60 * 1_000,
+          epochDay: 20_650,
+          hourOfDay: 12,
+          interval: 4,
+          startMs: intervalStartMs,
+        },
+        { fixtureId: 42 },
+      ),
+    ).resolves.toHaveLength(1);
+
+    expect(String(fetchMock.mock.calls[1]?.[0])).toBe(
+      'https://txline-dev.txodds.com/api/scores/historical/42',
+    );
+    expect(String(fetchMock.mock.calls[2]?.[0])).toBe(
+      'https://txline-dev.txodds.com/api/odds/updates/20650/12/4?fixtureId=42',
+    );
+  });
 });

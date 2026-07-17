@@ -62,6 +62,16 @@ class RecordingStore implements DomainStore {
     return { events: this.events, nextCursor: null };
   }
 
+  async purgeExpiredRawPayloads(
+    _input: Readonly<{
+      limit: number;
+      nowMs: number;
+    }>,
+  ): Promise<number> {
+    void _input;
+    return 0;
+  }
+
   async quarantine(input: QuarantineInput): Promise<AppendResult> {
     const duplicate = this.#quarantineIds.has(input.ingestId);
     this.#quarantineIds.add(input.ingestId);

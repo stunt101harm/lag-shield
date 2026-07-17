@@ -11,6 +11,8 @@
     "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint . --max-warnings=0",
+    "replay:hydrate": "node --import tsx src/replay/historical-replay-cli.ts",
+    "replay:seeded": "node --import tsx src/replay/seeded-demo-cli.ts",
     "start": "node dist/server.js",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
