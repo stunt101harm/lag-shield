@@ -73,6 +73,10 @@ latency, and market-key rules, see
 For the score-event classifier, risk thresholds, fail-safe behavior, hysteresis, and complete
 state-transition table, see the [deterministic soccer risk policy](docs/risk-policy.md).
 
+For the executable admission matrix, atomic pause-versus-order guarantee, paper-order API,
+idempotency semantics, and replay evidence, see
+[simulated market control](docs/simulated-market-control.md).
+
 ## Quality gates
 
 ```bash

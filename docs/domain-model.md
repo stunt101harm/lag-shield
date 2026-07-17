@@ -86,6 +86,11 @@ supplies `expectedStateVersion`, and stale writers fail with `ConcurrentStateErr
 `market_control_states` can be loaded after process restart, while the append-only
 `strategy_decisions` table retains the audit trail.
 
+Simulated order admission takes the same market lock after a replay-scoped idempotency lock.
+The latest decision, pending receipt, admission result, and paper order therefore share one
+market-serialized transaction boundary. See [simulated market control](simulated-market-control.md)
+for the state matrix and pause-versus-order race invariant.
+
 ## Storage layout
 
 | Data               | Tables                                                                                     | Purpose                                                         |

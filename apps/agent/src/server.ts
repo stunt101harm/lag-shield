@@ -8,6 +8,7 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { createDatabase } from './db/client.js';
 import { PostgresDomainStore } from './db/domain-store.js';
+import { PostgresSimulatedMarketControl } from './db/market-control.js';
 import { LiveTxLineIngestion } from './ingest/live-txline.js';
 
 loadEnvironment({
@@ -17,13 +18,12 @@ loadEnvironment({
 
 const environment = parseAgentEnvironment(process.env);
 const clock = new SystemClock();
-const database = environment.TXLINE_LIVE_ENABLED
-  ? createDatabase(environment.DATABASE_URL)
-  : null;
+const database = createDatabase(environment.DATABASE_URL);
 let liveIngestion: LiveTxLineIngestion | null = null;
 const app = buildApp({
   getLiveIngestionSnapshot: () => liveIngestion?.snapshot() ?? null,
   logger: { level: environment.LOG_LEVEL },
+  marketControl: new PostgresSimulatedMarketControl(database.client, { clock }),
 });
 let shutdownPromise: Promise<void> | null = null;
 
@@ -33,7 +33,7 @@ const shutdown = async (signal: NodeJS.Signals): Promise<void> => {
       app.log.info({ signal }, 'Shutting down LagShield agent');
       await liveIngestion?.stop();
       await app.close();
-      await database?.client.end({ timeout: 5 });
+      await database.client.end({ timeout: 5 });
     })();
   }
   await shutdownPromise;
@@ -56,7 +56,6 @@ try {
         `TxLINE credential network ${credentials.network} does not match configured network ${environment.TXLINE_NETWORK}.`,
       );
     }
-    if (!database) throw new Error('Live ingestion database was not initialized.');
     const client = new TxLineApiClient({
       apiToken: credentials.apiToken,
       config: getTxLineConfig(environment.TXLINE_NETWORK),
@@ -77,5 +76,5 @@ try {
   process.exitCode = 1;
   await liveIngestion?.stop().catch(() => undefined);
   await app.close().catch(() => undefined);
-  await database?.client.end({ timeout: 5 }).catch(() => undefined);
+  await database.client.end({ timeout: 5 }).catch(() => undefined);
 }

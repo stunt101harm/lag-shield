@@ -1,0 +1,1 @@
+ALTER TABLE "simulated_orders" ADD CONSTRAINT "simulated_orders_requested_at_check" CHECK ("simulated_orders"."requested_at_ms" IS NULL OR "simulated_orders"."requested_at_ms" <= "simulated_orders"."created_at_ms");

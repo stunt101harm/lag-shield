@@ -67,6 +67,7 @@ export const orderSide = pgEnum('order_side', ['back', 'lay']);
 export const orderStatus = pgEnum('order_status', [
   'accepted',
   'rejected',
+  'stale',
   'settled',
   'cancelled',
 ]);
@@ -553,6 +554,12 @@ export const replayRuns = pgTable(
 export const simulatedOrders = pgTable(
   'simulated_orders',
   {
+    admissionLatencyMs: bigint('admission_latency_ms', { mode: 'number' }),
+    admissionReasonCode: text('admission_reason_code'),
+    circuitBreakerReceiptId: text('circuit_breaker_receipt_id').references(
+      () => decisionReceipts.receiptId,
+      { onDelete: 'restrict' },
+    ),
     createdAtMs: bigint('created_at_ms', { mode: 'number' }).notNull(),
     decisionId: text('decision_id')
       .notNull()
@@ -560,10 +567,16 @@ export const simulatedOrders = pgTable(
     fixtureId: text('fixture_id').notNull(),
     idempotencyKey: text('idempotency_key').notNull(),
     marketId: text('market_id').notNull(),
+    marketState: marketControlState('market_state'),
+    marketStateVersion: integer('market_state_version'),
+    namespace: text('namespace').notNull().default('legacy'),
     orderId: text('order_id').primaryKey(),
     outcomeId: text('outcome_id').notNull(),
     payload: jsonb('payload').$type<SimulatedOrder>().notNull(),
+    payloadVersion: integer('payload_version').notNull().default(1),
     price: integer('price').notNull(),
+    requestHash: text('request_hash'),
+    requestedAtMs: bigint('requested_at_ms', { mode: 'number' }),
     settledAtMs: bigint('settled_at_ms', { mode: 'number' }),
     settlement: orderSettlement('settlement'),
     side: orderSide('side').notNull(),
@@ -572,12 +585,40 @@ export const simulatedOrders = pgTable(
   },
   (table) => [
     check('simulated_orders_created_at_check', sql`${table.createdAtMs} >= 0`),
+    check(
+      'simulated_orders_admission_latency_check',
+      sql`${table.admissionLatencyMs} IS NULL OR ${table.admissionLatencyMs} >= 0`,
+    ),
+    check(
+      'simulated_orders_market_state_version_check',
+      sql`${table.marketStateVersion} IS NULL OR ${table.marketStateVersion} > 0`,
+    ),
+    check('simulated_orders_payload_version_check', sql`${table.payloadVersion} > 0`),
+    check(
+      'simulated_orders_v2_audit_fields_check',
+      sql`${table.payloadVersion} < 2 OR (
+        ${table.admissionLatencyMs} IS NOT NULL AND
+        ${table.admissionReasonCode} IS NOT NULL AND
+        ${table.circuitBreakerReceiptId} IS NOT NULL AND
+        ${table.marketState} IS NOT NULL AND
+        ${table.marketStateVersion} IS NOT NULL AND
+        ${table.requestHash} IS NOT NULL AND
+        ${table.requestedAtMs} IS NOT NULL
+      )`,
+    ),
     check('simulated_orders_stake_check', sql`${table.stakeMicros} > 0`),
     check(
       'simulated_orders_settled_at_check',
       sql`${table.settledAtMs} IS NULL OR ${table.settledAtMs} >= ${table.createdAtMs}`,
     ),
-    uniqueIndex('simulated_orders_idempotency_uidx').on(table.idempotencyKey),
+    check(
+      'simulated_orders_requested_at_check',
+      sql`${table.requestedAtMs} IS NULL OR ${table.requestedAtMs} <= ${table.createdAtMs}`,
+    ),
+    uniqueIndex('simulated_orders_namespace_idempotency_uidx').on(
+      table.namespace,
+      table.idempotencyKey,
+    ),
     index('simulated_orders_fixture_time_idx').on(
       table.fixtureId,
       table.createdAtMs.desc(),
