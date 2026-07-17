@@ -5,12 +5,13 @@ import { parseArgs } from 'node:util';
 import { Connection } from '@solana/web3.js';
 
 import { txLineSubscriptionArtifact } from './artifact.js';
-import { TxLineApiClient } from './client.js';
+import { TxLineApiClient, type TxLineStreamKind } from './client.js';
 import { getTxLineConfig, parseTxLineNetwork } from './config.js';
 import { readCredentialsFile, writeCredentialsFile } from './credentials.js';
 import { assertRpcNetwork } from './network.js';
 import { safeErrorMessage } from './redact.js';
 import { summarizeFixture } from './schemas.js';
+import { readSseMessages } from './sse.js';
 import { loadKeypairFile } from './wallet.js';
 
 const help = `LagShield TxLINE operator CLI
@@ -21,6 +22,7 @@ Usage:
   pnpm txline -- activate --wallet FILE --tx-signature SIGNATURE [options]
   pnpm txline -- fixtures [options]
   pnpm txline -- smoke [options]
+  pnpm txline -- stream-smoke [options]
 
 Options:
   --network NETWORK          Defaults to TXLINE_NETWORK or devnet
@@ -31,6 +33,7 @@ Options:
   --duration-weeks NUMBER    Defaults to 4; must be a multiple of 4 through 48
   --tx-signature SIGNATURE   Confirmed subscribe transaction for activation recovery
   --limit NUMBER             Maximum fixture summaries to print (default: 12)
+  --duration-seconds NUMBER  Stream smoke duration after connect (default: 10, max: 60)
   --force                    Explicitly replace an existing credentials file
   --help                     Show this text
 
@@ -39,6 +42,7 @@ Secrets are accepted only through chmod 600 files; tokens are never printed.
 
 type CliValues = {
   readonly credentials?: string;
+  readonly 'duration-seconds'?: string;
   readonly 'duration-weeks'?: string;
   readonly force?: boolean;
   readonly help?: boolean;
@@ -73,6 +77,35 @@ function required(value: string | undefined, flag: string): string {
   return value;
 }
 
+async function captureStream(
+  apiClient: TxLineApiClient,
+  kind: TxLineStreamKind,
+  durationMs: number,
+): Promise<Readonly<{ messages: number; opened: true }>> {
+  const controller = new AbortController();
+  let timer = setTimeout(
+    () => controller.abort(new Error('stream connection timeout')),
+    30_000,
+  );
+  const response = await apiClient
+    .openDataStream(kind, { signal: controller.signal })
+    .finally(() => clearTimeout(timer));
+  timer = setTimeout(() => controller.abort(), durationMs);
+  let messages = 0;
+  try {
+    for await (const _message of readSseMessages(response.body!)) {
+      void _message;
+      messages += 1;
+    }
+  } catch (error) {
+    if (!controller.signal.aborted) throw error;
+  } finally {
+    clearTimeout(timer);
+    controller.abort();
+  }
+  return { messages, opened: true };
+}
+
 async function run(): Promise<void> {
   const processArguments = process.argv.slice(2);
   const cliArguments =
@@ -82,6 +115,7 @@ async function run(): Promise<void> {
     allowPositionals: true,
     options: {
       credentials: { type: 'string' },
+      'duration-seconds': { type: 'string' },
       'duration-weeks': { type: 'string' },
       force: { type: 'boolean' },
       help: { short: 'h', type: 'boolean' },
@@ -104,7 +138,9 @@ async function run(): Promise<void> {
   const command = positionals[0];
   if (
     positionals.length !== 1 ||
-    !['activate', 'doctor', 'subscribe', 'fixtures', 'smoke'].includes(command!)
+    !['activate', 'doctor', 'subscribe', 'fixtures', 'smoke', 'stream-smoke'].includes(
+      command!,
+    )
   ) {
     throw new Error(`Unknown command: ${positionals.join(' ')}`);
   }
@@ -202,6 +238,31 @@ async function run(): Promise<void> {
   const limit = parseInteger(cliValues.limit, 12, '--limit');
   if (limit < 1 || limit > 100) {
     throw new Error('--limit must be between 1 and 100.');
+  }
+
+  if (command === 'stream-smoke') {
+    const durationSeconds = parseInteger(
+      cliValues['duration-seconds'],
+      10,
+      '--duration-seconds',
+    );
+    if (durationSeconds < 1 || durationSeconds > 60) {
+      throw new Error('--duration-seconds must be between 1 and 60.');
+    }
+    const [odds, scores] = await Promise.all([
+      captureStream(apiClient, 'odds', durationSeconds * 1_000),
+      captureStream(apiClient, 'scores', durationSeconds * 1_000),
+    ]);
+    output({
+      discoveredFixtures: fixtures.length,
+      durationSeconds,
+      network,
+      odds,
+      scores,
+      status: 'stream-smoke-ok',
+      tokenLoaded: true,
+    });
+    return;
   }
 
   output({

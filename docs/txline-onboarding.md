@@ -143,5 +143,6 @@ or demo recordings. In deployment, mount the credentials file as a secret with m
 - Solana JSON-RPC `getGenesisHash` — network guard before signing
 - Solana program `subscribe` — on-chain access registration
 
-Later ingestion increments add score/odds snapshots, streams, historical replay, and on-chain
-proof validation behind the same network and authentication boundary.
+Live ingestion now adds `GET /api/odds/stream` and `GET /api/scores/stream` behind the same
+network and authentication boundary. See [live ingestion operations](live-ingestion.md).
+Historical replay and on-chain proof validation remain separate increments.

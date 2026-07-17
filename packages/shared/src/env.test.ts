@@ -14,6 +14,9 @@ describe('parseAgentEnvironment', () => {
       PORT: 4000,
       LOG_LEVEL: 'info',
       DATABASE_URL: 'postgresql://lagshield:lagshield@localhost:5432/lagshield',
+      TXLINE_CREDENTIALS_FILE: '.txline/devnet.credentials.json',
+      TXLINE_LIVE_ENABLED: false,
+      TXLINE_NETWORK: 'devnet',
     });
   });
 
@@ -33,6 +36,22 @@ describe('parseAgentEnvironment', () => {
   it('rejects non-PostgreSQL URLs', () => {
     expect(() =>
       parseAgentEnvironment({ DATABASE_URL: 'https://example.com/database' }),
+    ).toThrow('Invalid agent environment');
+  });
+
+  it('enables live ingestion only from an explicit boolean string', () => {
+    expect(
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        TXLINE_LIVE_ENABLED: 'true',
+        TXLINE_NETWORK: 'mainnet',
+      }),
+    ).toMatchObject({ TXLINE_LIVE_ENABLED: true, TXLINE_NETWORK: 'mainnet' });
+    expect(() =>
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        TXLINE_LIVE_ENABLED: 'yes',
+      }),
     ).toThrow('Invalid agent environment');
   });
 });

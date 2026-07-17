@@ -13,6 +13,8 @@ export type TxLineFetch = (
   init?: RequestInit,
 ) => Promise<Response>;
 
+export type TxLineStreamKind = 'odds' | 'scores';
+
 export class TxLineApiClient {
   readonly #apiToken: string | undefined;
   readonly #config: TxLineNetworkConfig;
@@ -67,6 +69,48 @@ export class TxLineApiClient {
   async discoverWorldCupFixtures(): Promise<readonly TxLineFixture[]> {
     const fixtures = await this.fetchFixtures();
     return fixtures.filter(isWorldCupFixture);
+  }
+
+  async openDataStream(
+    kind: TxLineStreamKind,
+    options: Readonly<{ lastEventId?: string; signal?: AbortSignal }> = {},
+  ): Promise<Response> {
+    if (!this.#apiToken) {
+      throw new Error(`A TxLINE API token is required for the ${kind} stream.`);
+    }
+    const url = new URL(`/api/${kind}/stream`, this.#config.apiOrigin);
+    const firstJwt = this.#jwt ?? (await this.renewGuestSession());
+    let response = await this.#authorizedFetch(url, firstJwt, {
+      accept: 'text/event-stream',
+      ...(options.lastEventId ? { lastEventId: options.lastEventId } : {}),
+      ...(options.signal ? { signal: options.signal } : {}),
+    });
+
+    if (response.status === 401) {
+      await response.body?.cancel().catch(() => undefined);
+      const renewedJwt = await this.renewGuestSession();
+      response = await this.#authorizedFetch(url, renewedJwt, {
+        accept: 'text/event-stream',
+        ...(options.lastEventId ? { lastEventId: options.lastEventId } : {}),
+        ...(options.signal ? { signal: options.signal } : {}),
+      });
+    }
+
+    if (!response.ok) {
+      await response.body?.cancel().catch(() => undefined);
+      throw txLineHttpError(response, `${kind} stream connection`);
+    }
+    if (!response.body) {
+      throw new Error(`TxLINE ${kind} stream response has no body.`);
+    }
+    const contentType = response.headers.get('Content-Type')?.toLowerCase() ?? '';
+    if (!contentType.startsWith('text/event-stream')) {
+      await response.body.cancel().catch(() => undefined);
+      throw new Error(
+        `TxLINE ${kind} stream returned unexpected Content-Type ${contentType || '(missing)'}.`,
+      );
+    }
+    return response;
   }
 
   async activateSubscription(input: {
@@ -130,11 +174,15 @@ export class TxLineApiClient {
     }
 
     const firstJwt = this.#jwt ?? (await this.renewGuestSession());
-    let response = await this.#authorizedFetch(url, firstJwt);
+    let response = await this.#authorizedFetch(url, firstJwt, {
+      accept: 'application/json',
+    });
 
     if (response.status === 401) {
       const renewedJwt = await this.renewGuestSession();
-      response = await this.#authorizedFetch(url, renewedJwt);
+      response = await this.#authorizedFetch(url, renewedJwt, {
+        accept: 'application/json',
+      });
     }
 
     if (!response.ok) {
@@ -144,19 +192,31 @@ export class TxLineApiClient {
     return response.json() as Promise<unknown>;
   }
 
-  #authorizedFetch(url: URL, jwt: string): Promise<Response> {
+  #authorizedFetch(
+    url: URL,
+    jwt: string,
+    options: Readonly<{
+      accept: 'application/json' | 'text/event-stream';
+      lastEventId?: string;
+      signal?: AbortSignal;
+    }>,
+  ): Promise<Response> {
     if (!this.#apiToken) {
       throw new Error('A TxLINE API token is required for authorized data requests.');
     }
 
+    const headers: Record<string, string> = {
+      Accept: options.accept,
+      Authorization: `Bearer ${jwt}`,
+      'Cache-Control': 'no-cache',
+      'X-Api-Token': this.#apiToken,
+    };
+    if (options.lastEventId) headers['Last-Event-ID'] = options.lastEventId;
+
     return this.#fetch(url, {
-      headers: {
-        Accept: 'application/json',
-        Authorization: `Bearer ${jwt}`,
-        'X-Api-Token': this.#apiToken,
-      },
+      headers,
       method: 'GET',
-      signal: AbortSignal.timeout(30_000),
+      signal: options.signal ?? AbortSignal.timeout(30_000),
     });
   }
 }

@@ -11,6 +11,12 @@ export type DeterminismContext = Readonly<{
   ids: IdGenerator;
 }>;
 
+export class SystemClock implements Clock {
+  nowMs(): number {
+    return Date.now();
+  }
+}
+
 export class FixedClock implements Clock {
   constructor(private readonly value: number) {
     if (!Number.isSafeInteger(value) || value < 0) {

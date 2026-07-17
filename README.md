@@ -58,6 +58,10 @@ pnpm txline -- smoke --network devnet
 See [TxLINE onboarding](docs/txline-onboarding.md) for mainnet activation, credential
 handling, failure diagnostics, and the exact upstream endpoints and artifacts used.
 
+Once activated, see [live ingestion operations](docs/live-ingestion.md) for unattended odds
+and score streams, recovery semantics, metrics, graceful shutdown, and the credential-gated
+stream smoke command.
+
 ## Quality gates
 
 ```bash

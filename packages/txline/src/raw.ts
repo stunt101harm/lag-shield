@@ -234,6 +234,7 @@ export function normalizeTxLinePayload(
       });
     }
     const fixture = parsed.data;
+    const gameState = fixture.GameState ?? fixture.gameState;
     const sourceId = `fixture:${fixture.FixtureId}:${fixture.Ts}`;
     const raw = createRawInput({
       fixtureId: String(fixture.FixtureId),
@@ -282,7 +283,7 @@ export function normalizeTxLinePayload(
         fixtureId: String(fixture.FixtureId),
         participants,
         scheduledAtMs: fixture.StartTime,
-        status: fixture.GameState === 6 ? 'cancelled' : 'scheduled',
+        status: gameState === 6 ? 'cancelled' : 'scheduled',
       },
       payloadVersion,
       receivedAtMs,

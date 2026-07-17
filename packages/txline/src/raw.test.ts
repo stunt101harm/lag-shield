@@ -141,4 +141,31 @@ describe('TxLINE raw normalization', () => {
       { id: '10', name: 'Canada', role: 'away' },
     ]);
   });
+
+  it('accepts the backward-compatible lowercase fixture game state', () => {
+    const result = normalizeTxLinePayload(
+      {
+        payloadKind: 'fixture',
+        rawPayload: {
+          Competition: 'FIFA World Cup',
+          CompetitionId: 72,
+          FixtureId: 124,
+          Participant1: 'Canada',
+          Participant1Id: 10,
+          Participant1IsHome: true,
+          Participant2: 'Japan',
+          Participant2Id: 20,
+          StartTime: 1_900_000_000_000,
+          Ts: 1_800_000_000_000,
+          gameState: 6,
+        },
+        source: 'txline-snapshot',
+      },
+      clock,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.event.kind !== 'fixture.observed') return;
+    expect(result.event.payload.status).toBe('cancelled');
+  });
 });

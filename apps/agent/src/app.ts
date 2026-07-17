@@ -1,6 +1,9 @@
 import fastify, { type FastifyInstance } from 'fastify';
 
+import type { LiveIngestionSnapshot } from './ingest/live-txline.js';
+
 export type BuildAppOptions = Readonly<{
+  getLiveIngestionSnapshot?: () => LiveIngestionSnapshot | null;
   logger?: boolean | { level: string };
 }>;
 
@@ -14,6 +17,11 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     status: 'ok',
     version: '0.1.0',
   }));
+
+  app.get('/metrics/streams', async () => {
+    const snapshot = options.getLiveIngestionSnapshot?.() ?? null;
+    return snapshot ? { enabled: true, ...snapshot } : { enabled: false };
+  });
 
   return app;
 }
