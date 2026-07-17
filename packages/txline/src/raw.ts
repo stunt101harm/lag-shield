@@ -30,8 +30,8 @@ export const rawTxLineOddsSchema = z
     MarketParameters: z.string().nullable().optional(),
     MarketPeriod: z.string().nullable().optional(),
     MessageId: z.string().min(1),
-    PriceNames: z.array(z.string().min(1)),
-    Prices: z.array(z.number().int()),
+    PriceNames: z.array(z.string().min(1)).default([]),
+    Prices: z.array(z.number().int()).default([]),
     SuperOddsType: z.string().min(1),
     Ts: z.number().int().nonnegative(),
   })
@@ -54,7 +54,7 @@ const lowerScoreStatSchema = z
   .object({ key: z.number().int(), period: z.number().int(), value: z.number().int() })
   .loose();
 
-export const rawTxLineScoreSchema = z
+const upperTxLineScoreSchema = z
   .object({
     Action: z.string().min(1),
     FixtureId: z.number().int(),
@@ -65,6 +65,44 @@ export const rawTxLineScoreSchema = z
     Ts: z.number().int().nonnegative(),
   })
   .loose();
+
+const lowerTxLineScoreSchema = z
+  .object({
+    action: z.string().min(1),
+    fixtureId: z.number().int(),
+    period: z.number().int().nullable().optional(),
+    seq: z.number().int().nonnegative(),
+    stats: z
+      .record(z.string().regex(/^\d+$/), z.number().int())
+      .default({})
+      .transform((stats) =>
+        Object.entries(stats).map(([encodedKey, value]) => {
+          const key = Number(encodedKey);
+          return {
+            key,
+            period: key < 1_000 ? 0 : Math.trunc(key / 1_000),
+            value,
+          };
+        }),
+      ),
+    statusId: z.number().int().nullable().optional(),
+    ts: z.number().int().nonnegative(),
+  })
+  .loose()
+  .transform(({ action, fixtureId, period, seq, stats, statusId, ts }) => ({
+    Action: action,
+    FixtureId: fixtureId,
+    Period: period,
+    Seq: seq,
+    Stats: stats,
+    StatusId: statusId,
+    Ts: ts,
+  }));
+
+export const rawTxLineScoreSchema = z.union([
+  upperTxLineScoreSchema,
+  lowerTxLineScoreSchema,
+]);
 
 export type TxLinePayloadKind = 'fixture' | 'odds' | 'score';
 type TxLineSource = Exclude<DomainEventSource, 'simulation'>;

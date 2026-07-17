@@ -80,6 +80,48 @@ describe('TxLINE raw normalization', () => {
     expect(result.event.sequence).toBe(88);
   });
 
+  it('normalizes the official lowercase score wire schema and encoded stat map', () => {
+    const result = normalizeTxLinePayload(
+      {
+        payloadKind: 'score',
+        rawPayload: {
+          action: 'goal',
+          fixtureId: 18_241_006,
+          seq: 89,
+          stats: { '1': 2, '2': 1, '1001': 1 },
+          ts: 1_799_999_999_100,
+        },
+        source: 'txline-live',
+      },
+      clock,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.event.kind !== 'score.observed') return;
+    expect(result.event.payload).toMatchObject({ awayScore: 1, homeScore: 2 });
+    expect(result.event.payload.stats).toEqual([
+      { key: 1, period: 0, value: 2 },
+      { key: 2, period: 0, value: 1 },
+      { key: 1001, period: 1, value: 1 },
+    ]);
+    expect(result.event.sequence).toBe(89);
+  });
+
+  it('accepts an official odds record with omitted optional price arrays', () => {
+    const { PriceNames: _names, Prices: _prices, ...withoutPrices } = validOddsPayload;
+    void _names;
+    void _prices;
+    const result = normalizeTxLinePayload(
+      { payloadKind: 'odds', rawPayload: withoutPrices, source: 'txline-live' },
+      clock,
+    );
+
+    expect(result.ok).toBe(true);
+    if (!result.ok || result.event.kind !== 'odds.observed') return;
+    expect(result.event.payload.market.status).toBe('suspended');
+    expect(result.event.payload.outcomes).toEqual([]);
+  });
+
   it.each([
     {
       expectedCode: 'unknown_payload_kind',

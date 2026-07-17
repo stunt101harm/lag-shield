@@ -177,14 +177,11 @@ describe('LiveTxLineIngestion', () => {
     controllers.get('scores')!.enqueue(
       encoder.encode(
         `id: score-1\ndata: ${JSON.stringify({
-          Action: 'score_update',
-          FixtureId: 42,
-          Seq: 7,
-          Stats: [
-            { Key: 1, Period: 0, Value: 1 },
-            { Key: 2, Period: 0, Value: 0 },
-          ],
-          Ts: 1_799_999_999_100,
+          action: 'score_update',
+          fixtureId: 42,
+          seq: 7,
+          stats: { '1': 1, '2': 0 },
+          ts: 1_799_999_999_100,
         })}\n\n`,
       ),
     );

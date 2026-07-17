@@ -48,6 +48,8 @@ The command reports only connection status and message counts, never payloads or
   callback runs. Replayed messages return `duplicate` and are not dispatched again.
 - Malformed JSON and invalid TxLINE records enter durable quarantine and increment the stream
   quarantine counter.
+- Score normalization accepts the official lowercase `fixtureId/seq/ts/action/stats` wire
+  contract (including encoded stat-key maps) and the uppercase compatibility examples.
 - `SIGINT` and `SIGTERM` abort both readers, await in-flight persistence, close the HTTP
   server, and then close PostgreSQL.
 
