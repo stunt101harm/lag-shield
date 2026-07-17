@@ -36,6 +36,26 @@ pnpm dev
 - Web: http://localhost:3000
 - Agent health: http://localhost:4000/health
 
+## TxLINE access
+
+LagShield includes a fail-closed operator CLI for network verification, free-tier activation,
+and dynamic World Cup fixture discovery. It never accepts an API token on the command line
+or prints one to logs.
+
+```bash
+# Verify that the RPC, API host, program, mint, and audited instruction artifact agree.
+pnpm txline -- doctor --network devnet
+
+# Activate the devnet free tier. The Solana keypair must have mode 600.
+pnpm txline -- subscribe --network devnet --wallet /absolute/path/to/keypair.json
+
+# Exercise guest-JWT renewal and retrieve live World Cup fixtures.
+pnpm txline -- smoke --network devnet
+```
+
+See [TxLINE onboarding](docs/txline-onboarding.md) for mainnet activation, credential
+handling, failure diagnostics, and the exact upstream endpoints and artifacts used.
+
 ## Quality gates
 
 ```bash

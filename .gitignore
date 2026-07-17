@@ -15,6 +15,7 @@ dist/
 
 # Wallets and credentials
 _keys/
+.txline/
 *.keypair.json
 wallet*.json
 
