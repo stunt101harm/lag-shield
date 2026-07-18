@@ -14,9 +14,6 @@
   "files": [
     "dist"
   ],
-  "bin": {
-    "lagshield-txline": "./dist/cli.js"
-  },
   "scripts": {
     "build": "tsc -p tsconfig.build.json",
     "cli": "tsx src/cli.ts",

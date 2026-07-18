@@ -85,6 +85,9 @@ pnpm replay:seeded
 pnpm evaluation:seeded -- --format markdown
 ```
 
+Both root commands build their required workspace packages first, so this path works directly
+after a clean locked install without generated files, a database, credentials, or network access.
+
 Run the full command center and judge API:
 
 ```bash
