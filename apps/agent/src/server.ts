@@ -9,13 +9,17 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { createDatabase } from './db/client.js';
 import { PostgresDomainStore } from './db/domain-store.js';
+import { PostgresJudgeReadStore } from './db/judge-read-store.js';
 import { PostgresSimulatedMarketControl } from './db/market-control.js';
 import { PostgresDecisionReceiptStore } from './db/receipt-store.js';
+import { PostgresReplayStore } from './db/replay-store.js';
 import { LiveTxLineIngestion } from './ingest/live-txline.js';
 import {
   DecisionProofService,
   DecisionProofWorker,
 } from './proof/decision-proof-service.js';
+import { RealtimeEventHub } from './realtime/event-hub.js';
+import { ReplayControlService } from './replay/replay-control.js';
 
 loadEnvironment({
   path: fileURLToPath(new URL('../../../.env', import.meta.url)),
@@ -25,15 +29,33 @@ loadEnvironment({
 const environment = parseAgentEnvironment(process.env);
 const clock = new SystemClock();
 const database = createDatabase(environment.DATABASE_URL);
+const domainStore = new PostgresDomainStore(database.client);
+const replayStore = new PostgresReplayStore(database.client);
 const receiptStore = new PostgresDecisionReceiptStore(database.client);
+const realtime = new RealtimeEventHub({ clock });
+const replayControl = new ReplayControlService({
+  clock,
+  domainStore,
+  realtime,
+  replayStore,
+});
 let liveIngestion: LiveTxLineIngestion | null = null;
 let proofWorker: DecisionProofWorker | null = null;
 const app = buildApp({
+  corsOrigin: environment.PUBLIC_WEB_ORIGIN,
   getLiveIngestionSnapshot: () => liveIngestion?.snapshot() ?? null,
+  getOperationalReadiness: () => ({
+    credentials: environment.TXLINE_LIVE_ENABLED ? 'configured' : 'disabled',
+    liveIngestion: environment.TXLINE_LIVE_ENABLED ? 'configured' : 'disabled',
+    network: environment.TXLINE_NETWORK,
+  }),
   getProofVerificationSnapshot: () => proofWorker?.snapshot() ?? null,
+  judgeRead: new PostgresJudgeReadStore(database.client, clock),
   logger: { level: environment.LOG_LEVEL },
   marketControl: new PostgresSimulatedMarketControl(database.client, { clock }),
+  realtime,
   receiptReader: receiptStore,
+  replayControl,
 });
 let shutdownPromise: Promise<void> | null = null;
 
@@ -77,7 +99,10 @@ try {
     liveIngestion = new LiveTxLineIngestion({
       client,
       clock,
-      store: new PostgresDomainStore(database.client),
+      onPersistedEvent: async (event) => {
+        realtime.publish('domain-event.committed', event);
+      },
+      store: domainStore,
     });
     await liveIngestion.start();
     proofWorker = new DecisionProofWorker({
@@ -88,6 +113,9 @@ try {
         clock,
         config: txLineConfig,
         connection: new Connection(txLineConfig.rpcUrl, 'confirmed'),
+        onReceiptUpdated: (receipt) => {
+          realtime.publish('proof.updated', receipt);
+        },
         receiptStore,
         simulationPayer: new PublicKey(credentials.walletPublicKey),
       }),

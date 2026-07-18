@@ -7,7 +7,7 @@ import {
   type MarketControlPort,
 } from '@lagshield/core';
 
-import { buildApp } from './app.js';
+import { buildApp, type JudgeReadPort } from './app.js';
 
 let app: ReturnType<typeof buildApp> | undefined;
 
@@ -114,7 +114,21 @@ describe('agent health endpoint', () => {
     });
     const order = await app.inject({
       method: 'POST',
-      payload: {},
+      payload: {
+        expectedDecisionId: 'decision-1',
+        expectedStateVersion: 1,
+        fixtureId: 'fixture-1',
+        idempotencyKey: 'disabled-order-1',
+        marketId: 'market-1',
+        namespace: 'live',
+        outcomeId: 'home',
+        payloadVersion: 1,
+        price: 2_100,
+        quoteObservedAtMs: 1_000,
+        requestedAtMs: 1_100,
+        side: 'back',
+        stakeMicros: 1_000_000,
+      },
       url: '/v1/simulated-orders',
     });
 
@@ -283,10 +297,125 @@ describe('agent health endpoint', () => {
     });
 
     expect(response.statusCode).toBe(400);
-    expect(response.json()).toMatchObject({
-      code: 'INVALID_SIMULATED_ORDER',
-      realMoney: false,
+    expect(response.json()).toMatchObject({ code: 'INVALID_REQUEST' });
+    expect(response.headers['x-request-id']).toBeTruthy();
+  });
+});
+
+describe('judge API contract', () => {
+  function judgeRead(overrides: Partial<JudgeReadPort> = {}): JudgeReadPort {
+    return {
+      listDecisions: async () => [],
+      listFixtures: async () => [],
+      listMarkets: async () => [],
+      listOrders: async () => [],
+      listReceipts: async () => [],
+      listReplayRuns: async () => [],
+      listTimeline: async () => [],
+      loadFixture: async () => null,
+      marketConsensus: async () => null,
+      overview: async () => ({
+        counts: {
+          decisions: 0,
+          fixtures: 0,
+          orders: 0,
+          pendingProofs: 0,
+          replayRuns: 0,
+        },
+        latestDecision: null,
+        latestOrder: null,
+      }),
+      readiness: async () => ({ database: 'ready' }),
+      ...overrides,
+    };
+  }
+
+  it('distinguishes liveness from dependency readiness', async () => {
+    app = buildApp();
+    const unavailable = await app.inject({ method: 'GET', url: '/ready' });
+    await app.close();
+
+    app = buildApp({ judgeRead: judgeRead() });
+    const ready = await app.inject({ method: 'GET', url: '/ready' });
+
+    expect(unavailable.statusCode).toBe(503);
+    expect(unavailable.json()).toMatchObject({ status: 'not-ready' });
+    expect(ready.statusCode).toBe(200);
+    expect(ready.json()).toMatchObject({
+      dependencies: { database: 'ready', network: 'devnet' },
+      status: 'ready',
     });
-    expect(response.json().issues.length).toBeGreaterThan(0);
+    expect(ready.headers['x-request-id']).toBeTruthy();
+  });
+
+  it('publishes a secret-free OpenAPI contract for every judge workflow', async () => {
+    app = buildApp({ judgeRead: judgeRead() });
+
+    const response = await app.inject({ method: 'GET', url: '/openapi.json' });
+    const contract = response.json();
+
+    expect(response.statusCode).toBe(200);
+    expect(Object.keys(contract.paths)).toEqual(
+      expect.arrayContaining([
+        '/health',
+        '/ready',
+        '/v1/fixtures',
+        '/v1/fixtures/{id}/timeline',
+        '/v1/markets/{id}/consensus',
+        '/v1/decisions',
+        '/v1/decision-receipts/{receiptId}',
+        '/v1/simulated-orders',
+        '/v1/replays/seeded',
+        '/v1/realtime',
+      ]),
+    );
+    expect(response.body).not.toContain('apiToken');
+    expect(response.body).not.toContain('DATABASE_URL');
+  });
+
+  it('accepts bounded timeline pagination and rejects unknown query fields', async () => {
+    let received: unknown;
+    app = buildApp({
+      judgeRead: judgeRead({
+        listTimeline: async (input) => {
+          received = input;
+          return [];
+        },
+      }),
+    });
+
+    const timeline = await app.inject({
+      method: 'GET',
+      url: '/v1/fixtures/fixture-1/timeline?beforeMs=123&limit=5',
+    });
+    const invalid = await app.inject({
+      method: 'GET',
+      url: '/v1/fixtures?unknown=true',
+    });
+
+    expect(timeline.statusCode).toBe(200);
+    expect(received).toEqual({ beforeMs: 123, fixtureId: 'fixture-1', limit: 5 });
+    expect(invalid.statusCode).toBe(400);
+    expect(invalid.json()).toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
+  it('applies the configured browser origin allowlist', async () => {
+    app = buildApp({ corsOrigin: ['https://lagshield.example'] });
+
+    const allowed = await app.inject({
+      headers: { origin: 'https://lagshield.example' },
+      method: 'GET',
+      url: '/health',
+    });
+    const denied = await app.inject({
+      headers: { origin: 'https://malicious.example' },
+      method: 'GET',
+      url: '/health',
+    });
+
+    expect(allowed.headers['access-control-allow-origin']).toBe(
+      'https://lagshield.example',
+    );
+    expect(denied.headers['access-control-allow-origin']).toBeUndefined();
   });
 });

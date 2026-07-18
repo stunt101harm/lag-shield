@@ -11,6 +11,7 @@
     "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
     "dev": "tsx watch src/server.ts",
     "lint": "eslint . --max-warnings=0",
+    "judge:smoke": "node --import tsx src/smoke/judge-api-smoke.ts",
     "replay:hydrate": "node --import tsx src/replay/historical-replay-cli.ts",
     "replay:seeded": "node --import tsx src/replay/seeded-demo-cli.ts",
     "start": "node dist/server.js",
@@ -19,6 +20,10 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.1.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.0",
     "@lagshield/core": "workspace:*",
     "@lagshield/shared": "workspace:*",
     "@lagshield/txline": "workspace:*",

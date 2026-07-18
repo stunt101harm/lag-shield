@@ -27,6 +27,7 @@ import {
   MarketNotInitializedError,
   PostgresSimulatedMarketControl,
 } from './market-control.js';
+import { PostgresJudgeReadStore } from './judge-read-store.js';
 import { PostgresReplayStore } from './replay-store.js';
 import { PostgresDecisionReceiptStore } from './receipt-store.js';
 import { ingestTxLinePayload } from '../ingest/txline-ingest.js';
@@ -72,6 +73,32 @@ function normalizeOdds(overrides: Record<string, unknown> = {}) {
         ...overrides,
       },
       source: 'txline-live',
+    },
+    clock,
+  );
+  if (!normalized.ok) throw new Error(normalized.quarantine.issues.join('; '));
+  return normalized;
+}
+
+function normalizeFixture() {
+  const normalized = normalizeTxLinePayload(
+    {
+      payloadKind: 'fixture',
+      rawPayload: {
+        Competition: 'FIFA World Cup',
+        CompetitionId: 72,
+        FixtureGroupId: 1,
+        FixtureId: 42,
+        GameState: 2,
+        Participant1: 'Canada',
+        Participant1Id: 10,
+        Participant1IsHome: true,
+        Participant2: 'Japan',
+        Participant2Id: 20,
+        StartTime: clock.nowMs() - 60_000,
+        Ts: clock.nowMs() - 1_000,
+      },
+      source: 'txline-snapshot',
     },
     clock,
   );
@@ -942,6 +969,99 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
         ({ order }) => order.namespace === 'replay:unsafe-recovery',
       ),
     ).toBe(true);
+  });
+
+  it('serves the complete judge read model from persisted evidence', async () => {
+    const fixture = normalizeFixture();
+    const odds = normalizeOdds({
+      MessageId: 'judge-read-odds',
+      Ts: clock.nowMs() - 100,
+    });
+    await requireStore().appendEvent({ event: fixture.event, raw: fixture.raw });
+    await requireStore().appendEvent({ event: odds.event, raw: odds.raw });
+    if (odds.event.kind !== 'odds.observed') return;
+    const marketId = odds.event.payload.market.marketId;
+    const decision = createStrategyDecision({
+      action: 'none',
+      expectedStateVersion: 0,
+      fixtureId: odds.event.fixtureId,
+      logicalTimestampMs: clock.nowMs(),
+      marketId,
+      metrics: {},
+      nextState: 'OPEN',
+      payloadVersion: 1,
+      policyVersion: 'judge-read-integration-v1',
+      previousState: 'OPEN',
+      reasonCodes: ['HEALTHY'],
+      triggerEventId: odds.event.eventId,
+    });
+    await requireStore().appendDecision(decision);
+    const gate = new PostgresSimulatedMarketControl(client!, { clock });
+    await gate.submitOrder(
+      orderRequest({
+        decisionId: decision.decisionId,
+        idempotencyKey: 'judge-read-order',
+        marketId,
+        stateVersion: 1,
+      }),
+    );
+
+    const replayStore = new PostgresReplayStore(client!);
+    const manifest = createReplayManifest({
+      events: [odds.event],
+      fixture: {
+        competitionId: '72',
+        fixtureId: odds.event.fixtureId,
+        scheduledAtMs: clock.nowMs() - 60_000,
+      },
+      normalizerVersion: 'judge-read-integration-v1',
+      oddsIntervals: [],
+      orderingVersion: 'event-order-v1',
+      sourceEndMs: odds.event.sourceTimestampMs,
+      sourceStartMs: odds.event.sourceTimestampMs,
+      strategyConfiguration: { policy: 'judge-read' },
+      strategyVersion: 'judge-read-integration-v1',
+    });
+    await replayStore.saveReplayManifest({
+      createdAtMs: clock.nowMs(),
+      manifest,
+      retentionExpiresAtMs: null,
+    });
+    await replayStore.createReplayRun(
+      createReplayRun({
+        manifest,
+        runId: 'judge-read-run',
+        speed: 'maximum',
+        startedAtMs: clock.nowMs(),
+      }),
+    );
+
+    const read = new PostgresJudgeReadStore(client!, clock);
+    await expect(read.readiness()).resolves.toEqual({ database: 'ready' });
+    await expect(read.overview()).resolves.toMatchObject({
+      counts: {
+        decisions: 1,
+        fixtures: 1,
+        orders: 1,
+        pendingProofs: 1,
+        replayRuns: 1,
+      },
+      latestDecision: { decisionId: decision.decisionId },
+    });
+    await expect(read.listFixtures({ limit: 10 })).resolves.toHaveLength(1);
+    await expect(read.loadFixture('42')).resolves.toMatchObject({
+      fixture: { fixtureId: '42', status: 'scheduled' },
+      markets: [{ marketId, state: { state: 'OPEN', stateVersion: 1 } }],
+    });
+    await expect(read.marketConsensus(marketId)).resolves.toMatchObject({
+      freshBookmakerCount: 1,
+      marketId,
+      status: 'ready',
+    });
+    await expect(read.listDecisions({ limit: 10 })).resolves.toHaveLength(1);
+    await expect(read.listReceipts({ limit: 10 })).resolves.toHaveLength(1);
+    await expect(read.listOrders({ limit: 10 })).resolves.toHaveLength(1);
+    await expect(read.listReplayRuns({ limit: 10 })).resolves.toHaveLength(1);
   });
 
   it('installs the bounded dashboard query indexes', async () => {

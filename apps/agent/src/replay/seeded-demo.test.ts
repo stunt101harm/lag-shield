@@ -17,7 +17,7 @@ describe('seeded replay demo', () => {
     const { result, trace } = await runSeededDemo({ runId: 'judge-demo' });
 
     expect(result).toMatchObject({
-      eventCount: 5,
+      eventCount: 8,
       namespace: 'replay:judge-demo',
       runId: 'judge-demo',
     });

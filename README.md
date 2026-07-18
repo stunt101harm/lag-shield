@@ -1,8 +1,8 @@
 # LagShield
 
 LagShield is an autonomous, proof-backed circuit breaker for in-play sports markets. It
-will consume TxLINE odds and score streams, detect stale or unsafe quoting around
-match-changing events, execute deterministic market-control actions, and produce
+consumes TxLINE odds and score streams, detects stale or unsafe quoting around
+match-changing events, executes deterministic market-control actions, and produces
 auditable decision receipts tied to TxLINE's Solana-anchored data.
 
 > The repository is under active hackathon development. The simulated order gateway is
@@ -37,6 +37,7 @@ pnpm dev
 
 - Web: http://localhost:3000
 - Agent health: http://localhost:4000/health
+- Judge API docs: http://localhost:4000/docs
 
 ## TxLINE access
 
@@ -81,6 +82,10 @@ For canonical decision receipts, exact TxLINE source provenance, pinned Borsh in
 layouts, Solana PDA/program verification, proof lifecycle, and real-network test procedure,
 see [decision receipts and TxLINE Solana proofs](docs/proof-verification.md).
 
+For the public read model, replay controls, strict errors, resumable Server-Sent Events,
+OpenAPI contract, and full HTTP smoke flow, see the
+[judge API and realtime control plane](docs/agent-api.md).
+
 ## Quality gates
 
 ```bash
@@ -88,6 +93,9 @@ pnpm check
 
 # Deterministic demo fallback when no match is live
 pnpm replay:seeded
+
+# Against a running agent, prove pause → rejected order → recovery → receipt
+pnpm judge:smoke
 ```
 
 This runs formatting checks, ESLint, strict TypeScript, unit tests, and production builds

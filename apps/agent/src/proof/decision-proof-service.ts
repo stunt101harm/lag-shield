@@ -182,6 +182,7 @@ export class DecisionProofService {
     Connection,
     'getAccountInfo' | 'getGenesisHash' | 'simulateTransaction'
   >;
+  readonly #onReceiptUpdated: (receipt: DecisionReceiptV2) => void | Promise<void>;
   readonly #receiptStore: ReceiptStore;
   readonly #simulationPayer: PublicKey;
   readonly #verifyOddsProof: VerifyOddsProof;
@@ -196,6 +197,7 @@ export class DecisionProofService {
         Connection,
         'getAccountInfo' | 'getGenesisHash' | 'simulateTransaction'
       >;
+      onReceiptUpdated?: (receipt: DecisionReceiptV2) => void | Promise<void>;
       receiptStore: ReceiptStore;
       simulationPayer: PublicKey;
       verifyOddsProof?: VerifyOddsProof;
@@ -206,6 +208,7 @@ export class DecisionProofService {
     this.#clock = dependencies.clock;
     this.#config = dependencies.config;
     this.#connection = dependencies.connection;
+    this.#onReceiptUpdated = dependencies.onReceiptUpdated ?? (() => undefined);
     this.#receiptStore = dependencies.receiptStore;
     this.#simulationPayer = dependencies.simulationPayer;
     this.#verifyOddsProof = dependencies.verifyOddsProof ?? verifyTxLineOddsProof;
@@ -227,6 +230,7 @@ export class DecisionProofService {
       if (verified.verification.status === 'pending') {
         throw new Error('Proof verification returned a non-terminal result.');
       }
+      await this.#onReceiptUpdated(verified);
       result[verified.verification.status] += 1;
     }
     return result;

@@ -17,6 +17,12 @@ export const agentEnvironmentSchema = z.object({
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   LOG_LEVEL: logLevelSchema.default('info'),
   DATABASE_URL: z.string().url().startsWith('postgres'),
+  PUBLIC_WEB_ORIGIN: z
+    .string()
+    .min(1)
+    .default('http://localhost:3000')
+    .transform((value) => value.split(',').map((origin) => origin.trim()))
+    .pipe(z.array(z.string().url()).min(1).max(10)),
   TXLINE_CREDENTIALS_FILE: z.string().min(1).default('.txline/devnet.credentials.json'),
   TXLINE_LIVE_ENABLED: z
     .enum(['true', 'false'])

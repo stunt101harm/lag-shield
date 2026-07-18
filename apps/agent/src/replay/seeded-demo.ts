@@ -186,6 +186,27 @@ export function createSeededDemoBundle() {
       sourceId: 'seed-odds-caught-up',
       timestampMs: startMs + 68_000,
     }),
+    oddsEvent({
+      probabilities: [600_000, 250_000, 150_000],
+      prices: [1650, 3600, 5100],
+      sequence: 5,
+      sourceId: 'seed-odds-recovery-1',
+      timestampMs: startMs + 72_000,
+    }),
+    oddsEvent({
+      probabilities: [600_000, 250_000, 150_000],
+      prices: [1650, 3600, 5100],
+      sequence: 6,
+      sourceId: 'seed-odds-recovery-2',
+      timestampMs: startMs + 75_000,
+    }),
+    oddsEvent({
+      probabilities: [600_000, 250_000, 150_000],
+      prices: [1650, 3600, 5100],
+      sequence: 7,
+      sourceId: 'seed-odds-recovery-3',
+      timestampMs: startMs + 78_000,
+    }),
   ];
   const manifest = createReplayManifest({
     dataMode: 'seeded-simulation',
@@ -194,7 +215,7 @@ export function createSeededDemoBundle() {
     normalizerVersion: 'seeded-demo-v3-score-semantics',
     oddsIntervals: [],
     orderingVersion: 'event-order-v1',
-    sourceEndMs: startMs + 68_000,
+    sourceEndMs: startMs + 78_000,
     sourceStartMs: startMs,
     strategyConfiguration: seededDemoStrategyConfiguration,
     strategyVersion: riskPolicyVersion,

@@ -139,7 +139,7 @@ export const replayRunSchema = z
     runId: identifierSchema,
     speed: z.union([z.number().positive().finite(), z.literal('maximum')]),
     startedAtMs: epochMillisecondsSchema,
-    status: z.enum(['pending', 'running', 'completed', 'failed']),
+    status: z.enum(['pending', 'running', 'paused', 'completed', 'stopped', 'failed']),
   })
   .strict()
   .superRefine((run, context) => {
@@ -150,10 +150,13 @@ export const replayRunSchema = z
         path: ['namespace'],
       });
     }
-    if (run.status === 'completed' && run.completedAtMs === null) {
+    if (
+      ['completed', 'stopped', 'failed'].includes(run.status) &&
+      run.completedAtMs === null
+    ) {
       context.addIssue({
         code: 'custom',
-        message: 'Completed replay runs require completedAtMs.',
+        message: 'Terminal replay runs require completedAtMs.',
         path: ['completedAtMs'],
       });
     }

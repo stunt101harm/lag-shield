@@ -19,6 +19,7 @@
     "dev": "turbo run dev --parallel",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
+    "judge:smoke": "pnpm --filter @lagshield/agent judge:smoke",
     "lint": "turbo run lint",
     "replay:seeded": "pnpm --filter @lagshield/agent replay:seeded",
     "replay:hydrate": "pnpm --filter @lagshield/agent replay:hydrate",

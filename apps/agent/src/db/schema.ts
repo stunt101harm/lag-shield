@@ -69,7 +69,9 @@ export const proofNetwork = pgEnum('proof_network', ['devnet', 'mainnet']);
 export const replayStatus = pgEnum('replay_status', [
   'pending',
   'running',
+  'paused',
   'completed',
+  'stopped',
   'failed',
 ]);
 export const orderSide = pgEnum('order_side', ['back', 'lay']);

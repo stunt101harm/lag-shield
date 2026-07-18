@@ -203,8 +203,10 @@ export class PostgresReplayStore implements ReplayStore {
       const allowed: Record<ReplayRun['status'], readonly ReplayRun['status'][]> = {
         completed: ['completed'],
         failed: ['failed'],
-        pending: ['pending', 'running', 'failed'],
-        running: ['running', 'completed', 'failed'],
+        paused: ['paused', 'running', 'stopped', 'failed'],
+        pending: ['pending', 'running', 'stopped', 'failed'],
+        running: ['running', 'paused', 'completed', 'stopped', 'failed'],
+        stopped: ['stopped'],
       };
       if (!allowed[previous.status].includes(run.status)) {
         throw new Error(

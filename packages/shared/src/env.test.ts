@@ -14,6 +14,7 @@ describe('parseAgentEnvironment', () => {
       PORT: 4000,
       LOG_LEVEL: 'info',
       DATABASE_URL: 'postgresql://lagshield:lagshield@localhost:5432/lagshield',
+      PUBLIC_WEB_ORIGIN: ['http://localhost:3000'],
       TXLINE_CREDENTIALS_FILE: '.txline/devnet.credentials.json',
       TXLINE_LIVE_ENABLED: false,
       TXLINE_NETWORK: 'devnet',
@@ -41,6 +42,15 @@ describe('parseAgentEnvironment', () => {
     });
 
     expect(environment.PORT).toBe(4100);
+  });
+
+  it('accepts a bounded comma-separated web origin allowlist', () => {
+    expect(
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        PUBLIC_WEB_ORIGIN: 'https://lagshield.example, http://localhost:3000',
+      }).PUBLIC_WEB_ORIGIN,
+    ).toEqual(['https://lagshield.example', 'http://localhost:3000']);
   });
 
   it('rejects missing database configuration', () => {
