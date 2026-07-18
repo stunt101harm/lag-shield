@@ -1,12 +1,111 @@
 # LagShield
 
-LagShield is an autonomous, proof-backed circuit breaker for in-play sports markets. It
-consumes TxLINE odds and score streams, detects stale or unsafe quoting around
-match-changing events, executes deterministic market-control actions, and produces
-auditable decision receipts tied to TxLINE's Solana-anchored data.
+**An autonomous, proof-backed circuit breaker for in-play sports markets, powered by
+TxLINE.**
 
-> The repository is under active hackathon development. The simulated order gateway is
-> not a real-money betting product.
+When a possible goal, penalty, red card, or VAR event arrives before market consensus has
+fully reacted, LagShield widens or pauses quoting, rejects unsafe paper orders, and reopens
+only after deterministic recovery. Every action carries a reproducible decision receipt tied
+to the exact TxLINE inputs and their Solana proof lifecycle.
+
+![LagShield command center showing a paused market after a possible goal](docs/assets/command-center-paused.png)
+
+> LagShield is a market-safety agent, not a winner-prediction model. The included execution
+> adapter is simulated, never real money, and the seeded scenario is always labelled as a
+> simulation.
+
+## Submission links
+
+| Judge resource        | Link / status                                                                                                                        |
+| --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| Public command center | Added after the owner-approved deployment tracked in [#15](https://github.com/stunt101harm/lag-shield/issues/15)                     |
+| Public agent API      | Added after deployment; Swagger UI is served at `/docs` and OpenAPI at `/openapi.json`                                               |
+| Demo video            | Added after the final recording tracked in [#17](https://github.com/stunt101harm/lag-shield/issues/17)                               |
+| Submission brief      | [Judge-ready copy, technical highlights, endpoint inventory, and claims](docs/submission.md)                                         |
+| Source and plan       | [Public repository](https://github.com/stunt101harm/lag-shield) · [parent epic](https://github.com/stunt101harm/lag-shield/issues/1) |
+
+## Why this matters
+
+Match-changing score events and bookmaker consensus do not always move at the same instant.
+That creates a stale-exposure window: a quoting engine can continue accepting an obsolete
+price while the underlying match has already changed. Alerting a human is too slow for an
+in-play control loop.
+
+LagShield turns TxLINE's granular score and odds streams into an autonomous safety boundary:
+
+1. ingest and durably normalize independent odds and score SSE streams;
+2. compute exact de-vig probabilities, freshness, velocity, dispersion, and reaction lag;
+3. apply a versioned `OPEN → WIDENED/PAUSED → RECOVERY → OPEN` state machine;
+4. serialize the decision and paper-order gate under the same PostgreSQL market lock; and
+5. attach a canonical receipt plus asynchronous TxLINE/Solana validation evidence.
+
+The core is deterministic TypeScript—not an opaque model or an LLM. The same ordered facts,
+policy configuration, and logical clock produce the same decisions and hashes.
+
+## Evidence, not promises
+
+The committed golden scenario exists so judges can see the complete product when no World
+Cup match is live. It exercises the production normalizer, consensus engine, risk policy,
+market gate, persistence, receipt, API, and realtime UI.
+
+| Seeded result                       | Measured value | Honest interpretation                                      |
+| ----------------------------------- | -------------: | ---------------------------------------------------------- |
+| Event to material consensus move    |          8.0 s | Observed stale-exposure window in the fixed scenario       |
+| Rejected-order probability distance |        20.0 pp | Absolute error proxy; **not P&L or a profit claim**        |
+| Normal-play control window          |           59 s | Zero restrictive transitions before the protective signal  |
+| Recovery behavior                   |        0 flaps | Three safe updates before deterministic reopen             |
+| Reproducibility                     |   SHA-256 hash | Byte-stable report from committed inputs and configuration |
+
+See the [evaluation methodology and limitations](docs/evaluation.md) and its committed
+[golden report](docs/evaluation/golden-seeded.md).
+
+## Two-minute judge path
+
+1. Open the public command center and select **Run winning demo**.
+2. Watch the possible-goal event move the market from `OPEN` to `PAUSED` before consensus
+   catches up.
+3. Select **Test order now** and confirm `ORDER_REJECTED_PAUSED` and `realMoney: false`.
+4. Watch three stable updates move through `RECOVERY` to `OPEN` without a refresh.
+5. Open the receipt to inspect reason codes, exact TxLINE message identity, payload hash, and
+   proof status. Pending, unavailable, rejected, and error are never shown as verified.
+6. Open `/docs`, `/ready`, and `/v1/evaluations/seeded` on the public agent.
+
+The complete recording script is in the [command-center guide](docs/command-center.md).
+
+## Reproduce locally
+
+Prerequisites: Node.js 24 LTS, pnpm 11, and Docker with Compose for the full stack.
+
+The deterministic engine and report need no database, TxLINE token, or network call:
+
+```bash
+corepack enable
+pnpm install --frozen-lockfile
+pnpm replay:seeded
+pnpm evaluation:seeded -- --format markdown
+```
+
+Run the full command center and judge API:
+
+```bash
+cp .env.example .env
+docker compose up -d postgres
+pnpm db:migrate
+pnpm dev
+```
+
+- Command center: http://localhost:3000
+- Agent health/readiness: http://localhost:4000/health · http://localhost:4000/ready
+- Swagger UI/OpenAPI: http://localhost:4000/docs · http://localhost:4000/openapi.json
+
+Against the running agent, execute the complete HTTP proof:
+
+```bash
+LAGSHIELD_API_URL=http://localhost:4000 pnpm judge:smoke
+```
+
+It starts the seeded replay, waits for `PAUSED`, submits a paper order, verifies rejection,
+waits for automatic recovery, and retrieves the persisted order and linked receipt.
 
 ## Architecture
 
@@ -14,119 +113,61 @@ auditable decision receipts tied to TxLINE's Solana-anchored data.
 | ----------------- | ------------------------------------------------------------------------ |
 | `apps/agent`      | Long-running ingestion, strategy execution, replay, API, and persistence |
 | `apps/web`        | Operator command center and judge-facing product experience              |
-| `packages/core`   | Deterministic domain logic, consensus math, and risk policy              |
-| `packages/txline` | TxLINE authentication, API, SSE, replay, and proof integration           |
-| `packages/shared` | Runtime schemas, configuration, and shared contracts                     |
+| `packages/core`   | Deterministic domain logic, consensus math, risk policy, and receipts    |
+| `packages/txline` | TxLINE activation, API, SSE, history, and Solana proof integration       |
+| `packages/shared` | Strict runtime configuration and shared contracts                        |
 
-Dependencies point inward: apps may use packages; `core` never imports an app or an
-external transport. Live and historical sources will implement the same normalized event
-contract so recorded inputs can reproduce decisions exactly.
+Apps depend inward on packages; `packages/core` imports no HTTP, database, or wall-clock
+transport. Live, historical, and seeded sources enter the same normalized event and strategy
+boundary while remaining explicitly namespaced.
 
-See [the domain model and event-store contract](docs/domain-model.md) for canonical event
-identity, replay ordering, PostgreSQL transaction boundaries, and schema evolution rules.
+Read [architecture, data flow, trust boundaries, and live/replay parity](docs/architecture.md)
+or the detailed [domain and transaction model](docs/domain-model.md).
 
-## Quick start
+## TxLINE integration and proof truth
 
-```bash
-cp .env.example .env
-docker compose up -d postgres
-pnpm install
-pnpm db:migrate
-pnpm dev
-```
+LagShield uses TxLINE for fixture discovery, live odds and scores, bounded historical replay,
+and validation proof material. Authentication follows the documented same-network
+subscription and guest-JWT flow. The exact nine HTTP endpoints and their code paths are
+listed in the [submission brief](docs/submission.md#txline-endpoints-used).
 
-- Web: http://localhost:3000
-- Agent health: http://localhost:4000/health
-- Judge API docs: http://localhost:4000/docs
+Two cryptographic claims remain separate:
 
-## TxLINE access
+- LagShield's SHA-256 receipt proves which persisted facts produced a decision.
+- TxLINE validation proves that a selected odds or score fact belongs to a Merkle root owned
+  by the configured TxLINE Solana program.
 
-LagShield includes a fail-closed operator CLI for network verification, free-tier activation,
-and dynamic World Cup fixture discovery. It never accepts an API token on the command line
-or prints one to logs.
+The safety decision and paper order are not sent on-chain. Proof validation is a read-only
+Solana simulation, and no position settles on-chain. See the precise
+[proof-verification contract](docs/proof-verification.md).
 
-```bash
-# Verify that the RPC, API host, program, mint, and audited instruction artifact agree.
-pnpm txline -- doctor --network devnet
+## Production and quality evidence
 
-# Activate the devnet free tier. The Solana keypair must have mode 600.
-pnpm txline -- subscribe --network devnet --wallet /absolute/path/to/keypair.json
-
-# Exercise guest-JWT renewal and retrieve live World Cup fixtures.
-pnpm txline -- smoke --network devnet
-```
-
-See [TxLINE onboarding](docs/txline-onboarding.md) for mainnet activation, credential
-handling, failure diagnostics, and the exact upstream endpoints and artifacts used.
-
-Once activated, see [live ingestion operations](docs/live-ingestion.md) for unattended odds
-and score streams, recovery semantics, metrics, graceful shutdown, and the credential-gated
-stream smoke command.
-
-For completed-fixture hydration, deterministic manifests, virtual-clock replay, retention,
-and the always-available seeded judge demo, see
-[historical replay operations](docs/historical-replay.md).
-
-For exact `Pct` conversion, residual normalization, robust median/MAD features, reaction
-latency, and market-key rules, see
-[market identity and consensus mathematics](docs/market-consensus.md).
-
-For the score-event classifier, risk thresholds, fail-safe behavior, hysteresis, and complete
-state-transition table, see the [deterministic soccer risk policy](docs/risk-policy.md).
-
-For the executable admission matrix, atomic pause-versus-order guarantee, paper-order API,
-idempotency semantics, and replay evidence, see
-[simulated market control](docs/simulated-market-control.md).
-
-For canonical decision receipts, exact TxLINE source provenance, pinned Borsh instruction
-layouts, Solana PDA/program verification, proof lifecycle, and real-network test procedure,
-see [decision receipts and TxLINE Solana proofs](docs/proof-verification.md).
-
-For the public read model, replay controls, strict errors, resumable Server-Sent Events,
-OpenAPI contract, and full HTTP smoke flow, see the
-[judge API and realtime control plane](docs/agent-api.md).
-
-For the judge-facing story, replay and order interactions, 1080p recording path, and
-accessibility behavior, see the [operator command center](docs/command-center.md).
-
-For replay metrics, exact formulas, the avoided-price-error proxy, sensitivity analysis,
-limitations, and byte-stable golden reports, see the
-[deterministic strategy evaluation](docs/evaluation.md).
-
-For restart reconciliation, dependency failure choices, operational metrics, security
-boundaries, fault-injection evidence, and the deployment gate, see the
-[production-readiness runbook](docs/production-readiness.md).
-
-For the Render Blueprint topology, secret-store activation, migrations, public smoke flow,
-monitoring, incognito checklist, and rollback procedure, see the
-[public deployment and judge runbook](docs/deployment.md).
-
-## Quality gates
+The agent includes unattended stream recovery, fail-closed dependency behavior, durable
+quarantine, transactional restart reconciliation, secret redaction, bounded retention,
+rate/body limits, security headers, graceful shutdown, load smoke tests, and independent
+readiness checks. Deployment is reproducible from the checked-in Render Blueprint.
 
 ```bash
 pnpm check
-
-# Deterministic demo fallback when no match is live
-pnpm replay:seeded
-
-# Against a running agent, prove pause → rejected order → recovery → receipt
-pnpm judge:smoke
-
-# Against a deployed agent, exercise readiness and judge-critical reads under bounded load
-LAGSHIELD_API_URL=https://agent.example.com pnpm load:smoke
-
-# Scan source signatures and production dependency advisories
-pnpm security:scan
+pnpm test:e2e
+pnpm docs:check
 pnpm security:audit
 ```
 
-This runs formatting checks, ESLint, strict TypeScript, unit tests, and production builds
-through Turborepo. CI runs the same command from a frozen lockfile with PostgreSQL 17, so
-the migration and restart-safety integration tests cannot silently skip.
+CI runs the complete suite with PostgreSQL 17 and also builds the portable agent container.
+Read the [production-readiness fault model](docs/production-readiness.md),
+[deployment runbook](docs/deployment.md), and [TxLINE integration feedback](docs/txline-feedback.md).
 
-## Project plan
+## Documentation map
 
-The implementation is tracked in [the parent epic](https://github.com/stunt101harm/lag-shield/issues/1).
+- [Strategy mathematics and state transitions](docs/risk-policy.md)
+- [Market identity, exact probability math, and consensus](docs/market-consensus.md)
+- [Simulated execution and atomic order admission](docs/simulated-market-control.md)
+- [Live TxLINE ingestion and recovery](docs/live-ingestion.md)
+- [Historical hydration and replay](docs/historical-replay.md)
+- [Judge API, realtime SSE, and smoke flow](docs/agent-api.md)
+- [Security policy](SECURITY.md) and [contribution guide](CONTRIBUTING.md)
 
 ## License
 

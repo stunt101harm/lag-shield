@@ -215,6 +215,14 @@ test('runs the judge story without a browser refresh', async ({ page }) => {
   await expect(page.getByText('possible goal')).toBeVisible();
   await expect(page.getByText('pending').first()).toBeVisible();
 
+  if (process.env.CAPTURE_DOCS_SCREENSHOT === '1') {
+    await page.screenshot({
+      animations: 'disabled',
+      fullPage: true,
+      path: '../../docs/assets/command-center-paused.png',
+    });
+  }
+
   await page.getByRole('button', { name: 'Test order now' }).click();
   await expect(page.getByText('Exposure blocked')).toBeVisible();
   await expect(page.getByText('order rejected paused')).toBeVisible();
