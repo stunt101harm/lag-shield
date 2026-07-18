@@ -16,6 +16,13 @@ export const agentEnvironmentSchema = z.object({
   HOST: z.string().min(1).default('0.0.0.0'),
   PORT: z.coerce.number().int().min(1).max(65_535).default(4000),
   LOG_LEVEL: logLevelSchema.default('info'),
+  HTTP_BODY_LIMIT_BYTES: z.coerce
+    .number()
+    .int()
+    .min(1_024)
+    .max(1_048_576)
+    .default(65_536),
+  HTTP_RATE_LIMIT_MAX: z.coerce.number().int().min(10).max(10_000).default(300),
   DATABASE_URL: z.string().url().startsWith('postgres'),
   PUBLIC_WEB_ORIGIN: z
     .string()
@@ -36,6 +43,13 @@ export const agentEnvironmentSchema = z.object({
     .max(300_000)
     .default(10_000),
   TXLINE_RPC_URL: z.string().url().optional(),
+  RETENTION_PURGE_BATCH_SIZE: z.coerce.number().int().min(1).max(10_000).default(1_000),
+  RETENTION_PURGE_INTERVAL_MS: z.coerce
+    .number()
+    .int()
+    .min(1_000)
+    .max(86_400_000)
+    .default(300_000),
 });
 
 export type AgentEnvironment = z.infer<typeof agentEnvironmentSchema>;

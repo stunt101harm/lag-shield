@@ -57,6 +57,16 @@ type ActiveReplay = {
   totalEvents: number;
 };
 
+type StructuredLogger = Readonly<{
+  error(fields: Record<string, unknown>, message: string): void;
+  info(fields: Record<string, unknown>, message: string): void;
+}>;
+
+const silentLogger: StructuredLogger = {
+  error: () => undefined,
+  info: () => undefined,
+};
+
 function rawFor(event: NormalizedDomainEvent) {
   return {
     fixtureId: event.fixtureId,
@@ -81,6 +91,7 @@ function rawFor(event: NormalizedDomainEvent) {
 export class ReplayControlService {
   readonly #clock: Clock;
   readonly #domainStore: DomainStore;
+  readonly #logger: StructuredLogger;
   readonly #realtime: RealtimeEventHub;
   readonly #replayClockFactory: (speed: ReplaySpeed) => VirtualReplayClock;
   readonly #replayStore: ReplayStore;
@@ -90,6 +101,7 @@ export class ReplayControlService {
     dependencies: Readonly<{
       clock: Clock;
       domainStore: DomainStore;
+      logger?: StructuredLogger;
       realtime: RealtimeEventHub;
       replayClockFactory?: (speed: ReplaySpeed) => VirtualReplayClock;
       replayStore: ReplayStore;
@@ -97,6 +109,7 @@ export class ReplayControlService {
   ) {
     this.#clock = dependencies.clock;
     this.#domainStore = dependencies.domainStore;
+    this.#logger = dependencies.logger ?? silentLogger;
     this.#realtime = dependencies.realtime;
     this.#replayClockFactory =
       dependencies.replayClockFactory ?? ((speed) => new VirtualReplayClock({ speed }));
@@ -141,6 +154,14 @@ export class ReplayControlService {
     const riskEngine = new DeterministicRiskEngine();
     const running = replayRunSchema.parse({ ...pending, status: 'running' });
     await this.#replayStore.updateReplayRun(running);
+    this.#logger.info(
+      {
+        fixtureId: running.inputFixtureId,
+        manifestId: running.manifestId,
+        replayRunId: running.runId,
+      },
+      'Deterministic replay started',
+    );
 
     const active: ActiveReplay = {
       clock,
@@ -194,6 +215,18 @@ export class ReplayControlService {
               decision: evaluation.decision,
               state: evaluation.state,
             });
+            this.#logger.info(
+              {
+                decisionId: evaluation.decision.decisionId,
+                fixtureId: evaluation.decision.fixtureId,
+                marketId: evaluation.decision.marketId,
+                nextState: evaluation.decision.nextState,
+                previousState: evaluation.decision.previousState,
+                replayRunId: input.runId,
+                triggerEventId: evaluation.decision.triggerEventId,
+              },
+              'Strategy decision committed',
+            );
           }
         }
 
@@ -251,6 +284,15 @@ export class ReplayControlService {
       active.clock.stop();
     }
     await this.#replayStore.updateReplayRun(active.run);
+    this.#logger.info(
+      {
+        action,
+        eventCount: active.run.eventCount,
+        replayRunId: runId,
+        status: active.run.status,
+      },
+      'Replay control applied',
+    );
     const snapshot = this.snapshot(runId);
     this.#realtime.publish('replay.status', snapshot);
     return snapshot;
@@ -286,6 +328,14 @@ export class ReplayControlService {
           status: 'completed',
         });
         await this.#replayStore.updateReplayRun(active.run);
+        this.#logger.info(
+          {
+            eventCount: active.run.eventCount,
+            replayRunId: active.run.runId,
+            status: active.run.status,
+          },
+          'Deterministic replay completed',
+        );
       }
     } catch (error) {
       if (active.run.status !== 'stopped') {
@@ -297,6 +347,17 @@ export class ReplayControlService {
         await this.#replayStore.updateReplayRun(active.run).catch(() => undefined);
       }
       if (active.run.status !== 'stopped') {
+        this.#logger.error(
+          {
+            errorMessage:
+              error instanceof Error
+                ? error.message.slice(0, 500)
+                : 'Unknown replay error.',
+            eventCount: active.run.eventCount,
+            replayRunId: active.run.runId,
+          },
+          'Deterministic replay failed closed',
+        );
         this.#realtime.publish('replay.status', {
           ...this.snapshot(active.run.runId),
           error: error instanceof Error ? error.message : 'Unknown replay error.',

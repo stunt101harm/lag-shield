@@ -15,8 +15,17 @@ credentials. Swagger UI is served at `/docs` and the OpenAPI 3 contract at
   `PUBLIC_WEB_ORIGIN` allowlist.
 - The public API is limited to 300 requests per minute per client. The long-lived SSE
   stream is exempt after connection.
+- Request bodies default to 64 KiB. Production transport adds HSTS, and JSON/SSE responses
+  deny framing and MIME sniffing while applying restrictive CSP, referrer, and permissions
+  policies.
 - Invalid parameters, replay conflicts, missing resources, rate limits, and internal
   failures use bounded JSON error envelopes. Unknown query fields are rejected.
+
+Operational views are deliberately split by concern: `/metrics/streams` reports TxLINE
+freshness/reconnect/quarantine state, `/metrics/proofs` reports the verification worker,
+`/metrics/realtime` reports the bounded SSE hub, and `/metrics/operations` reports
+request/error/latency counters, process memory/uptime, startup reconciliation, and retention.
+None includes environment values or credentials.
 
 ## Read endpoints
 
@@ -33,6 +42,7 @@ credentials. Swagger UI is served at `/docs` and the OpenAPI 3 contract at
 | `GET /v1/evaluations/seeded`           | Hash-addressed deterministic golden strategy report             |
 | `GET /v1/simulated-orders`             | Persisted admissions filtered by fixture, namespace, or status  |
 | `GET /v1/replays`                      | Persisted replay runs                                           |
+| `GET /metrics/operations`              | Secret-free process, request, restart, and retention telemetry  |
 
 List endpoints accept `limit` and enforce endpoint-specific maximums. The read model is
 computed from PostgreSQL evidence; it does not rely on process memory.

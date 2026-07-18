@@ -19,6 +19,11 @@ import { IdempotencyConflictError } from './db/domain-store.js';
 import { MarketNotInitializedError } from './db/market-control.js';
 import type { PostgresJudgeReadStore } from './db/judge-read-store.js';
 import type { LiveIngestionSnapshot } from './ingest/live-txline.js';
+import type {
+  RetentionWorkerSnapshot,
+  StartupRecoverySnapshot,
+} from './operations/maintenance.js';
+import type { OperationalMetricsPort } from './operations/operational-metrics.js';
 import type { DecisionProofWorkerSnapshot } from './proof/decision-proof-service.js';
 import type { RealtimeEventHub } from './realtime/event-hub.js';
 import {
@@ -54,9 +59,14 @@ export type ReplayControlPort = Pick<
 >;
 
 export type BuildAppOptions = Readonly<{
+  bodyLimitBytes?: number;
   corsOrigin?: boolean | string | readonly string[];
   evaluationReport?: StrategyEvaluationReport;
   getLiveIngestionSnapshot?: () => LiveIngestionSnapshot | null;
+  getMaintenanceSnapshot?: () => Readonly<{
+    retention: RetentionWorkerSnapshot | null;
+    startupRecovery: StartupRecoverySnapshot | null;
+  }>;
   getOperationalReadiness?: () => Readonly<{
     credentials: 'configured' | 'disabled';
     liveIngestion: 'configured' | 'disabled';
@@ -64,8 +74,16 @@ export type BuildAppOptions = Readonly<{
   }>;
   getProofVerificationSnapshot?: () => DecisionProofWorkerSnapshot | null;
   judgeRead?: JudgeReadPort;
-  logger?: boolean | { level: string };
+  logger?:
+    | boolean
+    | {
+        level: string;
+        redact?: { censor: string; paths: string[] };
+      };
   marketControl?: MarketControlPort;
+  operationalMetrics?: OperationalMetricsPort;
+  productionMode?: boolean;
+  rateLimitMax?: number;
   realtime?: RealtimeEventHub;
   receiptReader?: DecisionReceiptReader;
   replayControl?: ReplayControlPort;
@@ -164,6 +182,7 @@ function sseFrame(
 export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   const app = fastify({
     ajv: { customOptions: { removeAdditional: false } },
+    bodyLimit: options.bodyLimitBytes ?? 65_536,
     logger: options.logger ?? false,
   });
   const corsOrigin =
@@ -175,7 +194,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
     origin: corsOrigin,
   });
   void app.register(rateLimit, {
-    max: 300,
+    max: options.rateLimitMax ?? 300,
     timeWindow: '1 minute',
   });
   void app.register(swagger, {
@@ -201,8 +220,42 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
   });
 
   app.after(() => {
+    const requestFinishes = new WeakMap<object, (statusCode: number) => void>();
+
+    app.addHook('onRequest', async (request) => {
+      const finish = options.operationalMetrics?.startRequest();
+      if (!finish) return;
+      requestFinishes.set(request.raw, finish);
+      request.raw.once('aborted', () => {
+        finish(499);
+        requestFinishes.delete(request.raw);
+      });
+    });
+
+    app.addHook('onResponse', async (request, reply) => {
+      requestFinishes.get(request.raw)?.(reply.statusCode);
+      requestFinishes.delete(request.raw);
+    });
+
     app.addHook('onSend', async (request, reply, payload) => {
       void reply.header('x-request-id', request.id);
+      void reply.header('x-content-type-options', 'nosniff');
+      void reply.header('x-frame-options', 'DENY');
+      void reply.header('referrer-policy', 'no-referrer');
+      void reply.header('permissions-policy', 'camera=(), geolocation=(), microphone=()');
+      if (!request.url.startsWith('/docs')) {
+        void reply.header(
+          'content-security-policy',
+          "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+        );
+        void reply.header('cache-control', 'no-store');
+      }
+      if (options.productionMode) {
+        void reply.header(
+          'strict-transport-security',
+          'max-age=31536000; includeSubDomains',
+        );
+      }
       return payload;
     });
 
@@ -325,6 +378,23 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
       enabled: options.realtime !== undefined,
       ...(options.realtime?.snapshot() ?? {}),
     }));
+
+    app.get(
+      '/metrics/operations',
+      {
+        schema: {
+          summary: 'Secret-free process, request, and maintenance telemetry',
+          tags: ['system'],
+        },
+      },
+      async () => ({
+        maintenance: options.getMaintenanceSnapshot?.() ?? {
+          retention: null,
+          startupRecovery: null,
+        },
+        process: options.operationalMetrics?.snapshot() ?? null,
+      }),
+    );
 
     app.get(
       '/v1/overview',
@@ -689,10 +759,20 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         const responseHeaders: OutgoingHttpHeaders = {
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive',
+          'Content-Security-Policy':
+            "default-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
           'Content-Type': 'text/event-stream; charset=utf-8',
+          'Permissions-Policy': 'camera=(), geolocation=(), microphone=()',
+          'Referrer-Policy': 'no-referrer',
           'X-Accel-Buffering': 'no',
+          'X-Content-Type-Options': 'nosniff',
+          'X-Frame-Options': 'DENY',
           'X-Request-Id': request.id,
         };
+        if (options.productionMode) {
+          responseHeaders['Strict-Transport-Security'] =
+            'max-age=31536000; includeSubDomains';
+        }
         for (const name of [
           'access-control-allow-credentials',
           'access-control-allow-origin',
@@ -756,6 +836,18 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
           const result = await options.marketControl.submitOrder(order);
           if (result.persistenceStatus === 'inserted') {
             options.realtime?.publish('order.committed', result);
+            request.log.info(
+              {
+                admissionReasonCode: result.order.admissionReasonCode,
+                decisionId: result.order.decisionId,
+                fixtureId: result.order.fixtureId,
+                marketId: result.order.marketId,
+                orderId: result.order.orderId,
+                requestId: request.id,
+                status: result.order.status,
+              },
+              'Simulated order decision committed',
+            );
           }
           return reply.code(result.persistenceStatus === 'inserted' ? 201 : 200).send({
             adapter: simulatedMarketControlAdapter,

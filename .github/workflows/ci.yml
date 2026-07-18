@@ -54,6 +54,9 @@ jobs:
       - name: Run quality gates
         run: pnpm check
 
+      - name: Audit production dependencies
+        run: pnpm security:audit
+
       - name: Install command-center browser
         run: pnpm --filter @lagshield/web exec playwright install --with-deps chromium
 

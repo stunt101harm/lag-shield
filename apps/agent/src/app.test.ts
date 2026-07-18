@@ -10,6 +10,7 @@ import {
 
 import { buildApp, type JudgeReadPort } from './app.js';
 import { createSeededEvaluationReport } from './evaluation/strategy-evaluation.js';
+import { OperationalMetrics } from './operations/operational-metrics.js';
 import { RealtimeEventHub } from './realtime/event-hub.js';
 
 let app: ReturnType<typeof buildApp> | undefined;
@@ -31,6 +32,84 @@ describe('agent health endpoint', () => {
       status: 'ok',
       version: '0.1.0',
     });
+  });
+
+  it('applies security headers, production transport policy, and a bounded body limit', async () => {
+    app = buildApp({ bodyLimitBytes: 1_024, productionMode: true });
+
+    const healthy = await app.inject({ method: 'GET', url: '/health' });
+    const oversized = await app.inject({
+      method: 'POST',
+      payload: { padding: 'x'.repeat(2_000) },
+      url: '/v1/simulated-orders',
+    });
+
+    expect(healthy.headers).toMatchObject({
+      'cache-control': 'no-store',
+      'content-security-policy': expect.stringContaining("default-src 'none'"),
+      'permissions-policy': 'camera=(), geolocation=(), microphone=()',
+      'referrer-policy': 'no-referrer',
+      'strict-transport-security': 'max-age=31536000; includeSubDomains',
+      'x-content-type-options': 'nosniff',
+      'x-frame-options': 'DENY',
+    });
+    expect(oversized.statusCode).toBe(413);
+    expect(oversized.json()).toMatchObject({ code: 'INVALID_REQUEST' });
+  });
+
+  it('rate limits the public API with a generic bounded error', async () => {
+    app = buildApp({ rateLimitMax: 2 });
+
+    await app.inject({ method: 'GET', url: '/health' });
+    await app.inject({ method: 'GET', url: '/health' });
+    const limited = await app.inject({ method: 'GET', url: '/health' });
+
+    expect(limited.statusCode).toBe(429);
+    expect(limited.json()).toMatchObject({
+      code: 'RATE_LIMITED',
+      message: 'Public API rate limit exceeded.',
+    });
+    expect(limited.headers['x-request-id']).toBeTruthy();
+  });
+
+  it('publishes secret-free operational counters and maintenance state', async () => {
+    let nowMs = 1_000;
+    const operationalMetrics = new OperationalMetrics(() => nowMs);
+    app = buildApp({
+      getMaintenanceSnapshot: () => ({
+        retention: {
+          lastError: null,
+          lastFinishedAtMs: 900,
+          lastPurgedCount: 4,
+          running: true,
+          totalPurgedCount: 10,
+        },
+        startupRecovery: {
+          completedAtMs: 800,
+          recoveredReplayCount: 1,
+          recoveredReplayIds: ['replay-after-crash'],
+        },
+      }),
+      operationalMetrics,
+    });
+
+    await app.inject({ method: 'GET', url: '/missing' });
+    nowMs = 1_025;
+    const response = await app.inject({ method: 'GET', url: '/metrics/operations' });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      maintenance: {
+        retention: { totalPurgedCount: 10 },
+        startupRecovery: { recoveredReplayCount: 1 },
+      },
+      process: {
+        requests: { active: 1, clientErrors: 1, serverErrors: 0, total: 2 },
+        startedAtMs: 1_000,
+      },
+    });
+    expect(response.body).not.toContain('DATABASE_URL');
+    expect(response.body).not.toContain('apiToken');
   });
 
   it('reports live ingestion as explicitly disabled when it is not configured', async () => {

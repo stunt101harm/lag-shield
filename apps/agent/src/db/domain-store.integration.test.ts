@@ -33,6 +33,7 @@ import { PostgresReplayStore } from './replay-store.js';
 import { PostgresDecisionReceiptStore } from './receipt-store.js';
 import { ingestTxLinePayload } from '../ingest/txline-ingest.js';
 import { createSeededEvaluationReport } from '../evaluation/strategy-evaluation.js';
+import { PostgresStartupRecovery } from '../operations/maintenance.js';
 import { createSeededDemoBundle } from '../replay/seeded-demo.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
@@ -1105,6 +1106,57 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
     ]) {
       expect(names.has(requiredIndex), `missing index ${requiredIndex}`).toBe(true);
     }
+  });
+
+  it('fails closed after a restart and never replays an abandoned in-process run', async () => {
+    const bundle = createSeededDemoBundle();
+    const firstEvent = bundle.events[0];
+    if (!firstEvent) throw new Error('Seeded replay must include at least one event.');
+    const replayStore = new PostgresReplayStore(client!);
+    await replayStore.saveReplayManifest({
+      createdAtMs: clock.nowMs(),
+      manifest: bundle.manifest,
+      retentionExpiresAtMs: null,
+    });
+    const pending = createReplayRun({
+      manifest: bundle.manifest,
+      runId: 'restart-interrupted',
+      speed: 10,
+      startedAtMs: clock.nowMs(),
+    });
+    await replayStore.createReplayRun(pending);
+    const running = replayRunSchema.parse({
+      ...pending,
+      eventCount: 1,
+      lastEventId: firstEvent.eventId,
+      status: 'running',
+    });
+    await replayStore.updateReplayRun(running);
+
+    const recovery = new PostgresStartupRecovery({ clock, sql: client! });
+    await expect(recovery.reconcile()).resolves.toEqual({
+      completedAtMs: clock.nowMs(),
+      recoveredReplayCount: 1,
+      recoveredReplayIds: ['restart-interrupted'],
+    });
+    await expect(recovery.reconcile()).resolves.toMatchObject({
+      recoveredReplayCount: 0,
+      recoveredReplayIds: [],
+    });
+
+    const rows = await client!<{ payload: unknown; status: string }[]>`
+      SELECT status, payload FROM replay_runs WHERE run_id = 'restart-interrupted'
+    `;
+    expect(rows[0]?.status).toBe('failed');
+    expect(replayRunSchema.parse(rows[0]?.payload)).toMatchObject({
+      completedAtMs: clock.nowMs(),
+      eventCount: 1,
+      lastEventId: firstEvent.eventId,
+      status: 'failed',
+    });
+    await expect(replayStore.updateReplayRun(running)).rejects.toThrow(
+      'cannot move from failed to running',
+    );
   });
 
   it('rejects forged deterministic-order metadata at the database boundary', async () => {

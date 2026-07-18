@@ -93,6 +93,10 @@ For replay metrics, exact formulas, the avoided-price-error proxy, sensitivity a
 limitations, and byte-stable golden reports, see the
 [deterministic strategy evaluation](docs/evaluation.md).
 
+For restart reconciliation, dependency failure choices, operational metrics, security
+boundaries, fault-injection evidence, and the deployment gate, see the
+[production-readiness runbook](docs/production-readiness.md).
+
 ## Quality gates
 
 ```bash
@@ -103,6 +107,13 @@ pnpm replay:seeded
 
 # Against a running agent, prove pause → rejected order → recovery → receipt
 pnpm judge:smoke
+
+# Against a deployed agent, exercise readiness and judge-critical reads under bounded load
+LAGSHIELD_API_URL=https://agent.example.com pnpm load:smoke
+
+# Scan source signatures and production dependency advisories
+pnpm security:scan
+pnpm security:audit
 ```
 
 This runs formatting checks, ESLint, strict TypeScript, unit tests, and production builds

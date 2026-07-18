@@ -13,8 +13,12 @@ describe('parseAgentEnvironment', () => {
       HOST: '0.0.0.0',
       PORT: 4000,
       LOG_LEVEL: 'info',
+      HTTP_BODY_LIMIT_BYTES: 65_536,
+      HTTP_RATE_LIMIT_MAX: 300,
       DATABASE_URL: 'postgresql://lagshield:lagshield@localhost:5432/lagshield',
       PUBLIC_WEB_ORIGIN: ['http://localhost:3000'],
+      RETENTION_PURGE_BATCH_SIZE: 1_000,
+      RETENTION_PURGE_INTERVAL_MS: 300_000,
       TXLINE_CREDENTIALS_FILE: '.txline/devnet.credentials.json',
       TXLINE_LIVE_ENABLED: false,
       TXLINE_NETWORK: 'devnet',
@@ -33,6 +37,30 @@ describe('parseAgentEnvironment', () => {
       TXLINE_PROOF_INTERVAL_MS: 2_500,
       TXLINE_RPC_URL: 'https://rpc.example.com',
     });
+  });
+
+  it('accepts bounded public API and retention controls', () => {
+    expect(
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        HTTP_BODY_LIMIT_BYTES: '32768',
+        HTTP_RATE_LIMIT_MAX: '120',
+        RETENTION_PURGE_BATCH_SIZE: '250',
+        RETENTION_PURGE_INTERVAL_MS: '60000',
+      }),
+    ).toMatchObject({
+      HTTP_BODY_LIMIT_BYTES: 32_768,
+      HTTP_RATE_LIMIT_MAX: 120,
+      RETENTION_PURGE_BATCH_SIZE: 250,
+      RETENTION_PURGE_INTERVAL_MS: 60_000,
+    });
+
+    expect(() =>
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        HTTP_BODY_LIMIT_BYTES: '10000000',
+      }),
+    ).toThrow('Invalid agent environment');
   });
 
   it('coerces a valid port', () => {
