@@ -113,10 +113,13 @@ its progress, and a fresh run requires a new ID.
 
 ## Deployment topology
 
-The checked-in Blueprint creates one continuously running agent, one free static command
-center on Render's global CDN, and a private PostgreSQL 17 database. Migrations run before
-agent traffic, `/ready` checks the database and live configuration, and the static web build
-receives only the public agent hostname. See the [deployment runbook](deployment.md) for
+The checked-in Wrangler configuration creates one Cloudflare application: Workers Static
+Assets serves the command center, while one Worker proxies API/SSE paths to a single named,
+continuously running Cloudflare Container. A one-minute Cron Trigger provides an independent
+watchdog, and container idle shutdown is intentionally disabled for unattended TxLINE streams.
+Neon PostgreSQL holds every durable event and projection because container disk is ephemeral.
+Migrations run before the agent starts, `/ready` checks the database and live configuration,
+and browser/API traffic shares one origin. See the [deployment runbook](deployment.md) for
 activation, smoke, rollback, and judge checks.
 
 ## Detailed contracts

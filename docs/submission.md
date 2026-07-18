@@ -6,16 +6,16 @@ measured claims.
 
 ## Submission metadata
 
-| Field                | Value                                                                                                  |
-| -------------------- | ------------------------------------------------------------------------------------------------------ |
-| Project name         | LagShield                                                                                              |
-| One-line description | Autonomous, proof-backed circuit breaker for stale in-play sports markets, powered by TxLINE.          |
-| Repository           | https://github.com/stunt101harm/lag-shield                                                             |
-| Public application   | Pending owner-approved deployment in [issue #15](https://github.com/stunt101harm/lag-shield/issues/15) |
-| Public API           | Pending deployment; `/docs`, `/openapi.json`, and `/ready` are public                                  |
-| Demo video           | Pending final recording in [issue #17](https://github.com/stunt101harm/lag-shield/issues/17)           |
-| Owner / team         | `stunt101harm`                                                                                         |
-| License              | MIT                                                                                                    |
+| Field                | Value                                                                                                |
+| -------------------- | ---------------------------------------------------------------------------------------------------- |
+| Project name         | LagShield                                                                                            |
+| One-line description | Autonomous, proof-backed circuit breaker for stale in-play sports markets, powered by TxLINE.        |
+| Repository           | https://github.com/stunt101harm/lag-shield                                                           |
+| Public application   | Pending Cloudflare provisioning in [issue #15](https://github.com/stunt101harm/lag-shield/issues/15) |
+| Public API           | Pending deployment; `/docs`, `/openapi.json`, and `/ready` are public                                |
+| Demo video           | Pending final recording in [issue #17](https://github.com/stunt101harm/lag-shield/issues/17)         |
+| Owner / team         | `stunt101harm`                                                                                       |
+| License              | MIT                                                                                                  |
 
 ## Short description
 

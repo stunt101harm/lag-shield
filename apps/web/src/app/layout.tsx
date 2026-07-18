@@ -7,7 +7,9 @@ const title = 'LagShield · Autonomous Market Protection';
 const description =
   'Watch LagShield autonomously protect in-play World Cup markets with TxLINE data and Solana-verifiable decision receipts.';
 
-const metadataBase = new URL(process.env.RENDER_EXTERNAL_URL ?? 'http://localhost:3000');
+const metadataBase = new URL(
+  process.env.NEXT_PUBLIC_LAGSHIELD_WEB_URL ?? 'http://localhost:3000',
+);
 
 export const metadata: Metadata = {
   description,

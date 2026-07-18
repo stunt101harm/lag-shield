@@ -9,8 +9,9 @@ knowledge:
 3. Which deterministic evidence and policy rule caused it?
 
 It consumes the public agent API and resumable SSE stream documented in
-[`agent-api.md`](agent-api.md). Set `NEXT_PUBLIC_LAGSHIELD_API_URL` to the public agent
-origin before building the web application and include the web origin in the agent's
+[`agent-api.md`](agent-api.md). The production Cloudflare build uses relative URLs because the
+static command center and container-backed API share one origin. For split-host deployments,
+set `NEXT_PUBLIC_LAGSHIELD_API_URL` before building and include the web origin in the agent's
 `PUBLIC_WEB_ORIGIN` allowlist.
 
 Providers that expose a generated hostname separately can instead set
@@ -53,9 +54,10 @@ agent.
   viewports. CI retains the screenshots and traces as `command-center-evidence`.
 
 The generated `public/og.png` social card uses the same graphite, mint, coral, and violet
-visual language as the product and is exposed through host-derived Open Graph and X
-metadata. Production builds use Render's build-time `RENDER_EXTERNAL_URL` and export the
-entire application as static assets; the command center itself has no server or secret state.
+visual language as the product and is exposed through host-derived Open Graph and X metadata.
+Set `NEXT_PUBLIC_LAGSHIELD_WEB_URL` to the final origin before the production build. Cloudflare
+serves the exported application as static assets; the command center itself has no server or
+secret state.
 
 The README product screenshot is generated from this same deterministic judge journey at
 1920×1080. Regenerate it after any material UI change with the command in

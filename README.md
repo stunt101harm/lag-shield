@@ -20,7 +20,7 @@ to the exact TxLINE inputs and their Solana proof lifecycle.
 
 | Judge resource        | Link / status                                                                                                                        |
 | --------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| Public command center | Added after the owner-approved deployment tracked in [#15](https://github.com/stunt101harm/lag-shield/issues/15)                     |
+| Public command center | Added after the Cloudflare deployment tracked in [#15](https://github.com/stunt101harm/lag-shield/issues/15)                         |
 | Public agent API      | Added after deployment; Swagger UI is served at `/docs` and OpenAPI at `/openapi.json`                                               |
 | Demo video            | Added after the final recording tracked in [#17](https://github.com/stunt101harm/lag-shield/issues/17)                               |
 | Submission brief      | [Judge-ready copy, technical highlights, endpoint inventory, and claims](docs/submission.md)                                         |
@@ -122,6 +122,9 @@ waits for automatic recovery, and retrieves the persisted order and linked recei
 | `packages/txline` | TxLINE activation, API, SSE, history, and Solana proof integration       |
 | `packages/shared` | Strict runtime configuration and shared contracts                        |
 
+Cloudflare Workers Static Assets serves the command center and the same Worker proxies the API
+and SSE routes to one named, always-on Cloudflare Container. Durable state remains in PostgreSQL.
+
 Apps depend inward on packages; `packages/core` imports no HTTP, database, or wall-clock
 transport. Live, historical, and seeded sources enter the same normalized event and strategy
 boundary while remaining explicitly namespaced.
@@ -151,7 +154,8 @@ Solana simulation, and no position settles on-chain. See the precise
 The agent includes unattended stream recovery, fail-closed dependency behavior, durable
 quarantine, transactional restart reconciliation, secret redaction, bounded retention,
 rate/body limits, security headers, graceful shutdown, load smoke tests, and independent
-readiness checks. Deployment is reproducible from the checked-in Render Blueprint.
+readiness checks. Deployment is reproducible from the checked-in Wrangler configuration and
+container image.
 
 ```bash
 pnpm check

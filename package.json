@@ -12,7 +12,10 @@
   "scripts": {
     "build": "turbo run build",
     "build:agent": "pnpm --filter @lagshield/agent... build",
-    "check": "pnpm format:check && pnpm docs:check && pnpm security:scan && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm db:check",
+    "check": "pnpm format:check && pnpm docs:check && pnpm security:scan && pnpm lint && pnpm typecheck && pnpm test && pnpm build && pnpm cloudflare:check && pnpm db:check",
+    "cloudflare:check": "pnpm --filter @lagshield/cloudflare check",
+    "cloudflare:deploy": "pnpm --filter @lagshield/web... build && pnpm --filter @lagshield/cloudflare deploy",
+    "cloudflare:tail": "pnpm --filter @lagshield/cloudflare tail",
     "db:check": "pnpm --filter @lagshield/agent db:check",
     "db:generate": "pnpm --filter @lagshield/agent db:generate",
     "db:migrate": "pnpm --filter @lagshield/agent db:migrate",

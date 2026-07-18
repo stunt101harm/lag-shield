@@ -1,0 +1,55 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "lag-shield",
+  "main": "./cloudflare/worker.ts",
+  "compatibility_date": "2026-07-17",
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1,
+  },
+  "assets": {
+    "directory": "./apps/web/out",
+    "binding": "ASSETS",
+    "html_handling": "auto-trailing-slash",
+    "not_found_handling": "404-page",
+    "run_worker_first": [
+      "/health",
+      "/ready",
+      "/docs",
+      "/docs/*",
+      "/openapi.json",
+      "/metrics/*",
+      "/v1/*",
+    ],
+  },
+  "containers": [
+    {
+      "class_name": "LagShieldAgent",
+      "image": "./apps/agent/Dockerfile",
+      "instance_type": "basic",
+      "max_instances": 1,
+      "rollout_active_grace_period": 60,
+      "constraints": {
+        "regions": ["ENAM"],
+      },
+    },
+  ],
+  "durable_objects": {
+    "bindings": [
+      {
+        "name": "LAGSHIELD_AGENT",
+        "class_name": "LagShieldAgent",
+      },
+    ],
+  },
+  "migrations": [
+    {
+      "tag": "v1",
+      "new_sqlite_classes": ["LagShieldAgent"],
+    },
+  ],
+  "triggers": {
+    "crons": ["* * * * *"],
+  },
+}
