@@ -73,9 +73,13 @@ const retentionWorker = new RetentionWorker({
 let liveIngestion: LiveTxLineIngestion | null = null;
 let proofWorker: DecisionProofWorker | null = null;
 let startupRecoverySnapshot: StartupRecoverySnapshot | null = null;
+const publicWebOrigins = [
+  ...environment.PUBLIC_WEB_ORIGIN,
+  ...(environment.PUBLIC_WEB_HOST ? [`https://${environment.PUBLIC_WEB_HOST}`] : []),
+];
 const app = buildApp({
   bodyLimitBytes: environment.HTTP_BODY_LIMIT_BYTES,
-  corsOrigin: environment.PUBLIC_WEB_ORIGIN,
+  corsOrigin: publicWebOrigins,
   evaluationReport: seededEvaluationReport,
   getLiveIngestionSnapshot: () => liveIngestion?.snapshot() ?? null,
   getMaintenanceSnapshot: () => ({
@@ -136,9 +140,14 @@ try {
   await app.listen({ host: environment.HOST, port: environment.PORT });
   retentionWorker.start();
   if (environment.TXLINE_LIVE_ENABLED) {
-    const credentials = await readCredentialsFile(
-      resolve(environment.TXLINE_CREDENTIALS_FILE),
-    );
+    const credentials =
+      environment.TXLINE_CREDENTIALS_SOURCE === 'environment'
+        ? {
+            apiToken: environment.TXLINE_API_TOKEN!,
+            network: environment.TXLINE_NETWORK,
+            walletPublicKey: environment.TXLINE_WALLET_PUBLIC_KEY!,
+          }
+        : await readCredentialsFile(resolve(environment.TXLINE_CREDENTIALS_FILE));
     if (credentials.network !== environment.TXLINE_NETWORK) {
       throw new Error(
         `TxLINE credential network ${credentials.network} does not match configured network ${environment.TXLINE_NETWORK}.`,

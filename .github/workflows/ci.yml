@@ -45,7 +45,7 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 24
+          node-version-file: .node-version
           cache: pnpm
 
       - name: Install dependencies
@@ -56,6 +56,9 @@ jobs:
 
       - name: Audit production dependencies
         run: pnpm security:audit
+
+      - name: Build portable agent container
+        run: docker build --file apps/agent/Dockerfile --tag lagshield-agent:${{ github.sha }} .
 
       - name: Install command-center browser
         run: pnpm --filter @lagshield/web exec playwright install --with-deps chromium

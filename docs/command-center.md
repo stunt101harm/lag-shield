@@ -13,6 +13,11 @@ It consumes the public agent API and resumable SSE stream documented in
 origin before building the web application and include the web origin in the agent's
 `PUBLIC_WEB_ORIGIN` allowlist.
 
+Providers that expose a generated hostname separately can instead set
+`NEXT_PUBLIC_LAGSHIELD_API_HOST`; the production build derives its HTTPS origin without
+hardcoding a provider-assigned URL. The agent similarly accepts `PUBLIC_WEB_HOST` for its
+exact HTTPS CORS allowlist.
+
 ## Five-minute demo path
 
 1. Open the command center. When no match is live, the honest standby state points to the

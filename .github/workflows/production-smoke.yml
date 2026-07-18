@@ -1,0 +1,56 @@
+name: Production smoke
+
+on:
+  workflow_dispatch:
+    inputs:
+      api_url:
+        description: Public LagShield agent URL (uses repository variable when omitted)
+        required: false
+        type: string
+      full_judge_flow:
+        description: Execute the state-changing seeded replay/order/receipt flow
+        required: true
+        default: false
+        type: boolean
+  schedule:
+    - cron: '17 * * * *'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-smoke
+  cancel-in-progress: true
+
+jobs:
+  smoke:
+    if: github.event_name == 'workflow_dispatch' || vars.LAGSHIELD_API_URL != ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      LAGSHIELD_API_URL: ${{ inputs.api_url || vars.LAGSHIELD_API_URL }}
+      LOAD_SMOKE_CONCURRENCY: 4
+      LOAD_SMOKE_REQUESTS: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install locked dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Exercise health, readiness, operations, and seeded evaluation
+        run: pnpm load:smoke
+
+      - name: Exercise pause, rejected order, recovery, and receipt
+        if: inputs.full_judge_flow == true
+        run: pnpm judge:smoke

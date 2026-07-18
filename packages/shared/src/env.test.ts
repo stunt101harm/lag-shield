@@ -20,6 +20,7 @@ describe('parseAgentEnvironment', () => {
       RETENTION_PURGE_BATCH_SIZE: 1_000,
       RETENTION_PURGE_INTERVAL_MS: 300_000,
       TXLINE_CREDENTIALS_FILE: '.txline/devnet.credentials.json',
+      TXLINE_CREDENTIALS_SOURCE: 'file',
       TXLINE_LIVE_ENABLED: false,
       TXLINE_NETWORK: 'devnet',
       TXLINE_PROOF_INTERVAL_MS: 10_000,
@@ -79,6 +80,30 @@ describe('parseAgentEnvironment', () => {
         PUBLIC_WEB_ORIGIN: 'https://lagshield.example, http://localhost:3000',
       }).PUBLIC_WEB_ORIGIN,
     ).toEqual(['https://lagshield.example', 'http://localhost:3000']);
+  });
+
+  it('accepts a deployment hostname and provider-managed TxLINE credentials', () => {
+    expect(
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        PUBLIC_WEB_HOST: 'lagshield-web.onrender.com',
+        TXLINE_API_TOKEN: 'provider-secret-token',
+        TXLINE_CREDENTIALS_SOURCE: 'environment',
+        TXLINE_LIVE_ENABLED: 'true',
+        TXLINE_WALLET_PUBLIC_KEY: '11111111111111111111111111111111',
+      }),
+    ).toMatchObject({
+      PUBLIC_WEB_HOST: 'lagshield-web.onrender.com',
+      TXLINE_CREDENTIALS_SOURCE: 'environment',
+      TXLINE_LIVE_ENABLED: true,
+    });
+    expect(() =>
+      parseAgentEnvironment({
+        DATABASE_URL: 'postgresql://localhost/lagshield',
+        TXLINE_CREDENTIALS_SOURCE: 'environment',
+        TXLINE_LIVE_ENABLED: 'true',
+      }),
+    ).toThrow('TXLINE_API_TOKEN');
   });
 
   it('rejects missing database configuration', () => {

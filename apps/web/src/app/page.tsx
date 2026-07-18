@@ -117,8 +117,10 @@ type EvaluationReport = {
   };
 };
 
+const configuredAgentHost = process.env.NEXT_PUBLIC_LAGSHIELD_API_HOST;
 const agentUrl = (
-  process.env.NEXT_PUBLIC_LAGSHIELD_API_URL ?? 'http://localhost:4000'
+  process.env.NEXT_PUBLIC_LAGSHIELD_API_URL ??
+  (configuredAgentHost ? `https://${configuredAgentHost}` : 'http://localhost:4000')
 ).replace(/\/$/, '');
 
 const stateCopy: Record<MarketState, { eyebrow: string; narrative: string }> = {

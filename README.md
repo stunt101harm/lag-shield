@@ -97,6 +97,10 @@ For restart reconciliation, dependency failure choices, operational metrics, sec
 boundaries, fault-injection evidence, and the deployment gate, see the
 [production-readiness runbook](docs/production-readiness.md).
 
+For the Render Blueprint topology, secret-store activation, migrations, public smoke flow,
+monitoring, incognito checklist, and rollback procedure, see the
+[public deployment and judge runbook](docs/deployment.md).
+
 ## Quality gates
 
 ```bash

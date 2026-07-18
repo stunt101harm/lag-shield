@@ -22,6 +22,11 @@ The agent refuses to start live ingestion if the credential file's network diffe
 `TXLINE_NETWORK`. Tokens remain in the private credential file and are never returned by an
 API or log message.
 
+On a managed host, set `TXLINE_CREDENTIALS_SOURCE=environment` and inject
+`TXLINE_API_TOKEN` plus `TXLINE_WALLET_PUBLIC_KEY` through the provider's secret store before
+setting `TXLINE_LIVE_ENABLED=true`. The environment schema requires both values when this
+mode is live. Do not place either value in `render.yaml`, a build argument, or a public URL.
+
 Use the credential-gated operator smoke command to prove that both stream handshakes work.
 A quiet stream is a successful result; TxLINE does not guarantee sports updates when no
 covered fixture is active.

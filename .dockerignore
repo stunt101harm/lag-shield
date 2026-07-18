@@ -1,0 +1,14 @@
+.env
+.git
+.github
+.next
+.turbo
+.txline
+**/.next
+**/.turbo
+**/coverage
+**/dist
+**/node_modules
+**/test-results
+node_modules
+work
