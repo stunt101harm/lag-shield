@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
+import { get as httpGet, type IncomingHttpHeaders } from 'node:http';
 import {
   createMarketControlAdmission,
   createPendingDecisionReceipt,
@@ -8,6 +9,7 @@ import {
 } from '@lagshield/core';
 
 import { buildApp, type JudgeReadPort } from './app.js';
+import { RealtimeEventHub } from './realtime/event-hub.js';
 
 let app: ReturnType<typeof buildApp> | undefined;
 
@@ -417,5 +419,33 @@ describe('judge API contract', () => {
       'https://lagshield.example',
     );
     expect(denied.headers['access-control-allow-origin']).toBeUndefined();
+  });
+
+  it('preserves browser CORS and request tracing headers on the realtime stream', async () => {
+    const origin = 'https://lagshield.example';
+    app = buildApp({
+      corsOrigin: [origin],
+      realtime: new RealtimeEventHub({ clock: { nowMs: () => 1_000 } }),
+    });
+    await app.listen({ host: '127.0.0.1', port: 0 });
+    const address = app.server.address();
+    if (!address || typeof address === 'string') throw new Error('Missing test port.');
+
+    const headers = await new Promise<IncomingHttpHeaders>((resolve, reject) => {
+      const request = httpGet(
+        `http://127.0.0.1:${address.port}/v1/realtime`,
+        { headers: { origin } },
+        (response) => {
+          resolve(response.headers);
+          response.destroy();
+        },
+      );
+      request.once('error', reject);
+    });
+
+    expect(headers['access-control-allow-origin']).toBe(origin);
+    expect(headers.vary).toContain('Origin');
+    expect(headers['content-type']).toContain('text/event-stream');
+    expect(headers['x-request-id']).toBeTruthy();
   });
 });

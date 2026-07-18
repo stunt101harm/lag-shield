@@ -12,6 +12,7 @@ import {
 } from '@lagshield/core';
 import { z, ZodError } from 'zod';
 import { randomUUID } from 'node:crypto';
+import type { OutgoingHttpHeaders } from 'node:http';
 
 import { IdempotencyConflictError } from './db/domain-store.js';
 import { MarketNotInitializedError } from './db/market-control.js';
@@ -669,13 +670,24 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
           .regex(/^\d+$/)
           .optional()
           .parse(typeof header === 'string' ? header : request.query.after);
-        reply.hijack();
-        reply.raw.writeHead(200, {
+        const responseHeaders: OutgoingHttpHeaders = {
           'Cache-Control': 'no-cache, no-transform',
           Connection: 'keep-alive',
           'Content-Type': 'text/event-stream; charset=utf-8',
           'X-Accel-Buffering': 'no',
-        });
+          'X-Request-Id': request.id,
+        };
+        for (const name of [
+          'access-control-allow-credentials',
+          'access-control-allow-origin',
+          'access-control-expose-headers',
+          'vary',
+        ]) {
+          const value = reply.getHeader(name);
+          if (value !== undefined) responseHeaders[name] = value;
+        }
+        reply.hijack();
+        reply.raw.writeHead(200, responseHeaders);
         reply.raw.write(': lagshield-realtime\n\n');
         const unsubscribe = options.realtime.subscribe({
           ...(afterId ? { afterId } : {}),

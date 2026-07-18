@@ -53,3 +53,17 @@ jobs:
 
       - name: Run quality gates
         run: pnpm check
+
+      - name: Install command-center browser
+        run: pnpm --filter @lagshield/web exec playwright install --with-deps chromium
+
+      - name: Run command-center browser and accessibility tests
+        run: pnpm test:e2e
+
+      - name: Upload command-center evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: command-center-evidence
+          path: apps/web/test-results
+          retention-days: 7

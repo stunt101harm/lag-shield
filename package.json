@@ -24,6 +24,7 @@
     "replay:seeded": "pnpm --filter @lagshield/agent replay:seeded",
     "replay:hydrate": "pnpm --filter @lagshield/agent replay:hydrate",
     "test": "turbo run test",
+    "test:e2e": "pnpm --filter @lagshield/web test:e2e",
     "test:coverage": "turbo run test:coverage",
     "txline": "pnpm --filter @lagshield/txline cli",
     "typecheck": "turbo run typecheck"

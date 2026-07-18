@@ -86,6 +86,9 @@ For the public read model, replay controls, strict errors, resumable Server-Sent
 OpenAPI contract, and full HTTP smoke flow, see the
 [judge API and realtime control plane](docs/agent-api.md).
 
+For the judge-facing story, replay and order interactions, 1080p recording path, and
+accessibility behavior, see the [operator command center](docs/command-center.md).
+
 ## Quality gates
 
 ```bash
