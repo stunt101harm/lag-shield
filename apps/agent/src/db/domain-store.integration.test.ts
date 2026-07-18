@@ -18,6 +18,7 @@ import { fileURLToPath } from 'node:url';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { createDatabase, type DatabaseClient } from './client.js';
+import { PostgresEvaluationStore } from './evaluation-store.js';
 import {
   ConcurrentStateError,
   IdempotencyConflictError,
@@ -31,6 +32,8 @@ import { PostgresJudgeReadStore } from './judge-read-store.js';
 import { PostgresReplayStore } from './replay-store.js';
 import { PostgresDecisionReceiptStore } from './receipt-store.js';
 import { ingestTxLinePayload } from '../ingest/txline-ingest.js';
+import { createSeededEvaluationReport } from '../evaluation/strategy-evaluation.js';
+import { createSeededDemoBundle } from '../replay/seeded-demo.js';
 
 const databaseUrl = process.env.TEST_DATABASE_URL;
 const clock = new FixedClock(1_800_000_000_000);
@@ -176,6 +179,7 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
   beforeEach(async () => {
     await client?.unsafe(`
       TRUNCATE TABLE
+        evaluation_reports,
         decision_receipts,
         simulated_orders,
         market_control_states,
@@ -435,6 +439,27 @@ describe.skipIf(!databaseUrl)('PostgresDomainStore', () => {
       namespace: 'replay:integration-run-1',
       status: 'completed',
     });
+  });
+
+  it('persists hash-addressed evaluation reports against their replay manifest', async () => {
+    const bundle = createSeededDemoBundle();
+    const report = createSeededEvaluationReport();
+    await new PostgresReplayStore(client!).saveReplayManifest({
+      createdAtMs: clock.nowMs(),
+      manifest: bundle.manifest,
+      retentionExpiresAtMs: null,
+    });
+    const evaluations = new PostgresEvaluationStore(client!);
+
+    await expect(evaluations.save(report, clock.nowMs())).resolves.toEqual({
+      recordId: report.evaluationHash,
+      status: 'inserted',
+    });
+    await expect(evaluations.save(report, clock.nowMs())).resolves.toEqual({
+      recordId: report.evaluationHash,
+      status: 'duplicate',
+    });
+    await expect(evaluations.load(report.evaluationHash)).resolves.toEqual(report);
   });
 
   it('restores decision state after reconnect and rejects stale state versions', async () => {

@@ -10,6 +10,7 @@
     "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts",
     "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
     "dev": "tsx watch src/server.ts",
+    "evaluation:seeded": "node --import tsx src/evaluation/seeded-evaluation-cli.ts",
     "lint": "eslint . --max-warnings=0",
     "judge:smoke": "node --import tsx src/smoke/judge-api-smoke.ts",
     "replay:hydrate": "node --import tsx src/replay/historical-replay-cli.ts",

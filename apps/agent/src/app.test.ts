@@ -9,6 +9,7 @@ import {
 } from '@lagshield/core';
 
 import { buildApp, type JudgeReadPort } from './app.js';
+import { createSeededEvaluationReport } from './evaluation/strategy-evaluation.js';
 import { RealtimeEventHub } from './realtime/event-hub.js';
 
 let app: ReturnType<typeof buildApp> | undefined;
@@ -366,6 +367,7 @@ describe('judge API contract', () => {
         '/v1/markets/{id}/consensus',
         '/v1/decisions',
         '/v1/decision-receipts/{receiptId}',
+        '/v1/evaluations/seeded',
         '/v1/simulated-orders',
         '/v1/replays/seeded',
         '/v1/realtime',
@@ -373,6 +375,28 @@ describe('judge API contract', () => {
     );
     expect(response.body).not.toContain('apiToken');
     expect(response.body).not.toContain('DATABASE_URL');
+  });
+
+  it('serves the hash-addressed seeded evaluation without profit claims', async () => {
+    const evaluationReport = createSeededEvaluationReport();
+    app = buildApp({ evaluationReport });
+
+    const response = await app.inject({
+      method: 'GET',
+      url: '/v1/evaluations/seeded',
+    });
+
+    expect(response.statusCode).toBe(200);
+    expect(response.json()).toMatchObject({
+      evaluationHash: evaluationReport.evaluationHash,
+      metrics: {
+        avoidedPriceErrorProxy: {
+          label: 'absolute-probability-distance-proxy-not-pnl',
+        },
+        eventToFirstConsensusMoveLatencyMs: 8_000,
+      },
+    });
+    expect(response.body).not.toContain('profit protected');
   });
 
   it('accepts bounded timeline pagination and rejects unknown query fields', async () => {

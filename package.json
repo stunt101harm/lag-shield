@@ -17,6 +17,7 @@
     "db:migrate": "pnpm --filter @lagshield/agent db:migrate",
     "db:studio": "pnpm --filter @lagshield/agent db:studio",
     "dev": "turbo run dev --parallel",
+    "evaluation:seeded": "pnpm --filter @lagshield/agent evaluation:seeded",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
     "judge:smoke": "pnpm --filter @lagshield/agent judge:smoke",

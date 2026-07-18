@@ -9,6 +9,7 @@ import {
   simulatedMarketControlAdapter,
   type JsonValue,
   type MarketControlPort,
+  type StrategyEvaluationReport,
 } from '@lagshield/core';
 import { z, ZodError } from 'zod';
 import { randomUUID } from 'node:crypto';
@@ -54,6 +55,7 @@ export type ReplayControlPort = Pick<
 
 export type BuildAppOptions = Readonly<{
   corsOrigin?: boolean | string | readonly string[];
+  evaluationReport?: StrategyEvaluationReport;
   getLiveIngestionSnapshot?: () => LiveIngestionSnapshot | null;
   getOperationalReadiness?: () => Readonly<{
     credentials: 'configured' | 'disabled';
@@ -188,6 +190,7 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         { name: 'system' },
         { name: 'markets' },
         { name: 'decisions' },
+        { name: 'evaluation' },
         { name: 'replay' },
       ],
     },
@@ -565,6 +568,19 @@ export function buildApp(options: BuildAppOptions = {}): FastifyInstance {
         const { limit } = listQuerySchema.parse(request.query);
         return { items: await options.judgeRead.listReplayRuns({ limit }) };
       },
+    );
+
+    app.get(
+      '/v1/evaluations/seeded',
+      {
+        schema: {
+          summary: 'Load the deterministic seeded strategy evaluation',
+          tags: ['evaluation'],
+        },
+      },
+      async (_request, reply) =>
+        options.evaluationReport ??
+        reply.code(503).send({ code: 'EVALUATION_REPORT_DISABLED' }),
     );
 
     app.get(

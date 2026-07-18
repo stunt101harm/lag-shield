@@ -98,6 +98,24 @@ type StreamMetrics = {
   odds?: { state: string; streamLagMs: number | null };
   scores?: { state: string; streamLagMs: number | null };
 };
+type EvaluationReport = {
+  dataMode: 'seeded-simulation' | 'txline-historical';
+  evaluationHash: string;
+  metrics: {
+    avoidedPriceErrorProxy: {
+      label: 'absolute-probability-distance-proxy-not-pnl';
+      meanErrorMicros: number | null;
+    };
+    eventToFirstConsensusMoveLatencyMs: number | null;
+    flappingCount: number;
+    normalPlayControl: {
+      durationMs: number | null;
+      restrictiveTransitionCount: number;
+    };
+    pauseDurationMs: number | null;
+    timeToReopenMs: number | null;
+  };
+};
 
 const agentUrl = (
   process.env.NEXT_PUBLIC_LAGSHIELD_API_URL ?? 'http://localhost:4000'
@@ -189,17 +207,21 @@ export default function HomePage() {
   const [speed, setSpeed] = useState('2');
   const [orderResult, setOrderResult] = useState<OrderResult | null>(null);
   const [streams, setStreams] = useState<StreamMetrics>({ enabled: false });
+  const [evaluation, setEvaluation] = useState<EvaluationReport | null>(null);
 
   const refresh = useCallback(async () => {
     try {
-      const [nextSnapshot, fixtureResponse, streamResponse] = await Promise.all([
-        optionalJson<ReplaySnapshot>('/v1/replays/active'),
-        readJson<{ items: Array<{ fixtureId: string }> }>('/v1/fixtures?limit=20'),
-        readJson<StreamMetrics>('/metrics/streams'),
-      ]);
+      const [nextSnapshot, fixtureResponse, streamResponse, evaluationResponse] =
+        await Promise.all([
+          optionalJson<ReplaySnapshot>('/v1/replays/active'),
+          readJson<{ items: Array<{ fixtureId: string }> }>('/v1/fixtures?limit=20'),
+          readJson<StreamMetrics>('/metrics/streams'),
+          readJson<EvaluationReport>('/v1/evaluations/seeded'),
+        ]);
       setSnapshot(nextSnapshot);
       setFixtures(fixtureResponse.items);
       setStreams(streamResponse);
+      setEvaluation(evaluationResponse);
       const fixtureId =
         nextSnapshot?.latestDecision?.fixtureId ?? fixtureResponse.items[0]?.fixtureId;
       if (fixtureId) {
@@ -620,6 +642,52 @@ export default function HomePage() {
           </span>
         </article>
       </section>
+
+      {evaluation ? (
+        <section className="evaluation-proof" aria-labelledby="evaluation-title">
+          <div className="evaluation-story">
+            <p className="overline">Replay evidence · hash-addressed</p>
+            <h2 id="evaluation-title">Measured protection, not a profit claim</h2>
+            <p>
+              The score signal arrived{' '}
+              <strong>
+                {duration(evaluation.metrics.eventToFirstConsensusMoveLatencyMs)}
+              </strong>{' '}
+              before the first material consensus move. LagShield was already paused.
+            </p>
+            <span>
+              {evaluation.dataMode.replace('-', ' ')} · evaluation{' '}
+              <code>{evaluation.evaluationHash.slice(0, 12)}</code>
+            </span>
+          </div>
+          <div className="evaluation-stat">
+            <span>Observed lag window</span>
+            <strong>
+              {duration(evaluation.metrics.eventToFirstConsensusMoveLatencyMs)}
+            </strong>
+            <small>signal → material move</small>
+          </div>
+          <div className="evaluation-stat">
+            <span>Probability-distance proxy</span>
+            <strong>
+              {evaluation.metrics.avoidedPriceErrorProxy.meanErrorMicros === null
+                ? '—'
+                : `${(
+                    evaluation.metrics.avoidedPriceErrorProxy.meanErrorMicros / 10_000
+                  ).toFixed(1)} pp`}
+            </strong>
+            <small>absolute distance · not P&amp;L</small>
+          </div>
+          <div className="evaluation-stat">
+            <span>Control / recovery</span>
+            <strong>{evaluation.metrics.flappingCount} flaps</strong>
+            <small>
+              {evaluation.metrics.normalPlayControl.restrictiveTransitionCount} control
+              pauses · reopen {duration(evaluation.metrics.timeToReopenMs)}
+            </small>
+          </div>
+        </section>
+      ) : null}
 
       <div className="workspace-grid">
         <section className="consensus-panel" aria-labelledby="consensus-title">

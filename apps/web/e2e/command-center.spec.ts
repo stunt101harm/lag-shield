@@ -22,6 +22,24 @@ const decision = {
   reasonCodes: ['EVENT_GOAL_UNCONFIRMED', 'QUOTE_REACTION_LAG'],
   triggerEventId: 'evt_possible_goal',
 };
+const evaluation = {
+  dataMode: 'seeded-simulation',
+  evaluationHash: 'e'.repeat(64),
+  metrics: {
+    avoidedPriceErrorProxy: {
+      label: 'absolute-probability-distance-proxy-not-pnl',
+      meanErrorMicros: 200_000,
+    },
+    eventToFirstConsensusMoveLatencyMs: 8_000,
+    flappingCount: 0,
+    normalPlayControl: {
+      durationMs: 59_000,
+      restrictiveTransitionCount: 0,
+    },
+    pauseDurationMs: 12_000,
+    timeToReopenMs: 18_000,
+  },
+};
 
 function snapshot(state: 'OPEN' | 'PAUSED') {
   return {
@@ -101,6 +119,7 @@ async function installAgentMock(page: Page) {
       });
     }
     if (path === '/metrics/streams') return json(route, { enabled: false });
+    if (path === '/v1/evaluations/seeded') return json(route, evaluation);
     if (path === '/v1/fixtures') return json(route, { items: [] });
     if (path === '/v1/replays/active') {
       return started
@@ -185,6 +204,8 @@ test('runs the judge story without a browser refresh', async ({ page }) => {
   await page.goto('/');
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('STANDBY');
   await expect(page.getByText('Never real money')).toBeVisible();
+  await expect(page.getByText('Measured protection, not a profit claim')).toBeVisible();
+  await expect(page.getByText('20.0 pp')).toBeVisible();
 
   await page.getByRole('button', { name: 'Run winning demo' }).click();
   await expect(page.getByRole('heading', { level: 1 })).toHaveText('PAUSED');

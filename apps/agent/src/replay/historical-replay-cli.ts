@@ -1,4 +1,8 @@
-import { SystemClock } from '@lagshield/core';
+import {
+  SystemClock,
+  buildStrategyEvaluationReport,
+  defaultRiskPolicyConfiguration,
+} from '@lagshield/core';
 import {
   TxLineApiClient,
   getTxLineConfig,
@@ -12,7 +16,9 @@ import { fileURLToPath } from 'node:url';
 
 import { createDatabase } from '../db/client.js';
 import { PostgresDomainStore } from '../db/domain-store.js';
+import { PostgresEvaluationStore } from '../db/evaluation-store.js';
 import { PostgresReplayStore } from '../db/replay-store.js';
+import { evaluateStrategyTrace } from '../evaluation/strategy-evaluation.js';
 import { TxLineHistoricalHydrator } from './historical-hydrator.js';
 import { HistoricalReplayService } from './historical-replay.js';
 import { seededDemoStrategyConfiguration } from './seeded-demo.js';
@@ -121,6 +127,17 @@ try {
     runId,
     speed,
   });
+  const evaluation = buildStrategyEvaluationReport({
+    ...evaluateStrategyTrace({
+      events: hydration.events,
+      manifest: hydration.manifest,
+      policyConfiguration: defaultRiskPolicyConfiguration,
+    }),
+    events: hydration.events,
+    manifest: hydration.manifest,
+    policyConfiguration: defaultRiskPolicyConfiguration,
+  });
+  await new PostgresEvaluationStore(database.client).save(evaluation, clock.nowMs());
   process.stdout.write(
     `${JSON.stringify(
       {
@@ -133,6 +150,7 @@ try {
         },
         manifest: hydration.manifest,
         network,
+        evaluation,
         result,
       },
       null,

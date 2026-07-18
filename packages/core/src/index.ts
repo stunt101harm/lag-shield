@@ -5,6 +5,7 @@ export const lagShieldIdentity = Object.freeze({
 });
 
 export * from './decision-receipt.js';
+export * from './evaluation.js';
 export * from './events.js';
 export * from './json.js';
 export * from './market-consensus.js';

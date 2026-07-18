@@ -9,10 +9,12 @@ import { fileURLToPath } from 'node:url';
 import { buildApp } from './app.js';
 import { createDatabase } from './db/client.js';
 import { PostgresDomainStore } from './db/domain-store.js';
+import { PostgresEvaluationStore } from './db/evaluation-store.js';
 import { PostgresJudgeReadStore } from './db/judge-read-store.js';
 import { PostgresSimulatedMarketControl } from './db/market-control.js';
 import { PostgresDecisionReceiptStore } from './db/receipt-store.js';
 import { PostgresReplayStore } from './db/replay-store.js';
+import { createSeededEvaluationReport } from './evaluation/strategy-evaluation.js';
 import { LiveTxLineIngestion } from './ingest/live-txline.js';
 import {
   DecisionProofService,
@@ -20,6 +22,7 @@ import {
 } from './proof/decision-proof-service.js';
 import { RealtimeEventHub } from './realtime/event-hub.js';
 import { ReplayControlService } from './replay/replay-control.js';
+import { createSeededDemoBundle } from './replay/seeded-demo.js';
 
 loadEnvironment({
   path: fileURLToPath(new URL('../../../.env', import.meta.url)),
@@ -30,6 +33,7 @@ const environment = parseAgentEnvironment(process.env);
 const clock = new SystemClock();
 const database = createDatabase(environment.DATABASE_URL);
 const domainStore = new PostgresDomainStore(database.client);
+const evaluationStore = new PostgresEvaluationStore(database.client);
 const replayStore = new PostgresReplayStore(database.client);
 const receiptStore = new PostgresDecisionReceiptStore(database.client);
 const realtime = new RealtimeEventHub({ clock });
@@ -39,10 +43,13 @@ const replayControl = new ReplayControlService({
   realtime,
   replayStore,
 });
+const seededEvaluationReport = createSeededEvaluationReport();
+const seededDemoBundle = createSeededDemoBundle();
 let liveIngestion: LiveTxLineIngestion | null = null;
 let proofWorker: DecisionProofWorker | null = null;
 const app = buildApp({
   corsOrigin: environment.PUBLIC_WEB_ORIGIN,
+  evaluationReport: seededEvaluationReport,
   getLiveIngestionSnapshot: () => liveIngestion?.snapshot() ?? null,
   getOperationalReadiness: () => ({
     credentials: environment.TXLINE_LIVE_ENABLED ? 'configured' : 'disabled',
@@ -79,6 +86,12 @@ for (const signal of ['SIGINT', 'SIGTERM'] as const) {
 }
 
 try {
+  await replayStore.saveReplayManifest({
+    createdAtMs: clock.nowMs(),
+    manifest: seededDemoBundle.manifest,
+    retentionExpiresAtMs: null,
+  });
+  await evaluationStore.save(seededEvaluationReport, clock.nowMs());
   await app.listen({ host: environment.HOST, port: environment.PORT });
   if (environment.TXLINE_LIVE_ENABLED) {
     const credentials = await readCredentialsFile(

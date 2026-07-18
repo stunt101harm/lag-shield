@@ -89,6 +89,10 @@ OpenAPI contract, and full HTTP smoke flow, see the
 For the judge-facing story, replay and order interactions, 1080p recording path, and
 accessibility behavior, see the [operator command center](docs/command-center.md).
 
+For replay metrics, exact formulas, the avoided-price-error proxy, sensitivity analysis,
+limitations, and byte-stable golden reports, see the
+[deterministic strategy evaluation](docs/evaluation.md).
+
 ## Quality gates
 
 ```bash

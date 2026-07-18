@@ -6,6 +6,7 @@ import type {
   ReplayRun,
   SimulatedOrder,
   StrategyDecision,
+  StrategyEvaluationReport,
 } from '@lagshield/core';
 import { sql } from 'drizzle-orm';
 import {
@@ -599,6 +600,37 @@ export const replayRuns = pgTable(
     ),
     index('replay_runs_status_started_idx').on(table.status, table.startedAtMs),
     uniqueIndex('replay_runs_namespace_uidx').on(table.namespace),
+  ],
+);
+
+export const evaluationReports = pgTable(
+  'evaluation_reports',
+  {
+    createdAtMs: bigint('created_at_ms', { mode: 'number' }).notNull(),
+    evaluationHash: text('evaluation_hash').primaryKey(),
+    fixtureId: text('fixture_id').notNull(),
+    manifestId: text('manifest_id')
+      .notNull()
+      .references(() => replayManifests.manifestId, { onDelete: 'restrict' }),
+    payload: jsonb('payload').$type<StrategyEvaluationReport>().notNull(),
+    policyConfigurationHash: text('policy_configuration_hash'),
+    policyVersion: text('policy_version').notNull(),
+  },
+  (table) => [
+    check('evaluation_reports_created_at_check', sql`${table.createdAtMs} >= 0`),
+    check(
+      'evaluation_reports_hashes_check',
+      sql`${table.evaluationHash} ~ '^[a-f0-9]{64}$' AND
+          (${table.policyConfigurationHash} IS NULL OR ${table.policyConfigurationHash} ~ '^[a-f0-9]{64}$')`,
+    ),
+    index('evaluation_reports_manifest_created_idx').on(
+      table.manifestId,
+      table.createdAtMs.desc(),
+    ),
+    index('evaluation_reports_fixture_created_idx').on(
+      table.fixtureId,
+      table.createdAtMs.desc(),
+    ),
   ],
 );
 

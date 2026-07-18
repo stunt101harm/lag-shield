@@ -30,11 +30,17 @@ credentials. Swagger UI is served at `/docs` and the OpenAPI 3 contract at
 | `GET /v1/decisions`                    | Strategy decisions filtered by fixture or market                |
 | `GET /v1/decision-receipts`            | Receipt and TxLINE proof lifecycle list                         |
 | `GET /v1/decision-receipts/:receiptId` | Canonical decision evidence and proof material                  |
+| `GET /v1/evaluations/seeded`           | Hash-addressed deterministic golden strategy report             |
 | `GET /v1/simulated-orders`             | Persisted admissions filtered by fixture, namespace, or status  |
 | `GET /v1/replays`                      | Persisted replay runs                                           |
 
 List endpoints accept `limit` and enforce endpoint-specific maximums. The read model is
 computed from PostgreSQL evidence; it does not rely on process memory.
+
+The evaluation endpoint includes exact replay and policy hashes, latency/state metrics,
+sensitivity rows, explicit limitations, and an avoided-price-error probability-distance
+proxy labelled as not P&L. It is derived from the seeded replay manifest that the agent
+persists at startup, and its hash-addressed report is stored in `evaluation_reports`.
 
 ## Deterministic judge replay
 

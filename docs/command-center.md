@@ -26,6 +26,9 @@ origin before building the web application and include the web origin in the age
 6. Let three stable updates move the agent through `RECOVERY` to `OPEN`.
 7. Open the latest decision evidence. Distinguish the canonical receipt hash from its
    proof lifecycle: pending, unavailable, rejected, and error are never styled as verified.
+8. Close on the hash-addressed replay evidence strip: an 8-second observed consensus lag,
+   20.0 percentage-point probability-distance proxy explicitly labelled as not P&L, zero
+   control-window pauses, and zero recovery flaps.
 
 For a faster deployment check, use 10× or run `pnpm judge:smoke` directly against the
 agent.
