@@ -2,7 +2,7 @@ services:
   - type: web
     runtime: node
     name: lagshield-agent-stunt101harm
-    branch: agent/public-deployment
+    branch: agent/static-web-deployment
     region: ohio
     plan: starter
     numInstances: 1
@@ -48,17 +48,12 @@ services:
         value: 'false'
 
   - type: web
-    runtime: node
+    runtime: static
     name: lagshield-web-stunt101harm
-    branch: agent/public-deployment
-    region: ohio
-    plan: starter
-    numInstances: 1
+    branch: agent/static-web-deployment
     autoDeployTrigger: checksPass
     buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @lagshield/web... build
-    startCommand: pnpm --filter @lagshield/web start
-    healthCheckPath: /
-    maxShutdownDelaySeconds: 30
+    staticPublishPath: ./apps/web/out
     buildFilter:
       paths:
         - apps/web/**
@@ -79,6 +74,22 @@ services:
           type: web
           name: lagshield-agent-stunt101harm
           envVarKey: RENDER_EXTERNAL_HOSTNAME
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), geolocation=(), microphone=()
+      - path: /*
+        name: Content-Security-Policy
+        value: default-src 'self'; connect-src 'self' https://*.onrender.com; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
 
 databases:
   - name: lagshield-postgres

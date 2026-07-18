@@ -4,6 +4,7 @@ node_modules/
 .turbo/
 coverage/
 dist/
+/apps/web/out/
 playwright-report/
 test-results/
 *.tsbuildinfo

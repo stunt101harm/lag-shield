@@ -113,10 +113,11 @@ its progress, and a fresh run requires a new ID.
 
 ## Deployment topology
 
-The checked-in Blueprint creates two continuously running web services and a private
-PostgreSQL 17 database in one region. Migrations run before agent traffic, `/ready` checks the
-database and live configuration, and the web build receives only the public agent hostname.
-See the [deployment runbook](deployment.md) for activation, smoke, rollback, and judge checks.
+The checked-in Blueprint creates one continuously running agent, one free static command
+center on Render's global CDN, and a private PostgreSQL 17 database. Migrations run before
+agent traffic, `/ready` checks the database and live configuration, and the static web build
+receives only the public agent hostname. See the [deployment runbook](deployment.md) for
+activation, smoke, rollback, and judge checks.
 
 ## Detailed contracts
 

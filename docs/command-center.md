@@ -54,7 +54,8 @@ agent.
 
 The generated `public/og.png` social card uses the same graphite, mint, coral, and violet
 visual language as the product and is exposed through host-derived Open Graph and X
-metadata.
+metadata. Production builds use Render's build-time `RENDER_EXTERNAL_URL` and export the
+entire application as static assets; the command center itself has no server or secret state.
 
 The README product screenshot is generated from this same deterministic judge journey at
 1920×1080. Regenerate it after any material UI change with the command in

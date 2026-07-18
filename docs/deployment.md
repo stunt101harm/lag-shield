@@ -1,16 +1,24 @@
 # Public deployment and judge runbook
 
-LagShield deploys from one Render Blueprint into three same-region resources:
+LagShield deploys from one Render Blueprint into three resources:
 
 | Resource                       | Render type                | Runtime contract                                                                     |
 | ------------------------------ | -------------------------- | ------------------------------------------------------------------------------------ |
 | `lagshield-agent-stunt101harm` | Starter web service        | One continuously running Fastify/SSE agent, one process owner, `/ready` health check |
-| `lagshield-web-stunt101harm`   | Starter web service        | Next.js command center with the public agent hostname embedded at build time         |
+| `lagshield-web-stunt101harm`   | Free global static site    | Exported Next.js command center with the agent hostname embedded at build time       |
 | `lagshield-postgres`           | Basic 256 MB PostgreSQL 17 | Private-network-only database, 15 GB disk, release-time Drizzle migrations           |
 
-Starter web services are intentional: Render's free services spin down after an idle window,
-which is incompatible with unattended TxLINE streaming and a judge demo. The Blueprint is
-billable and must be approved by the repository owner in Render before resources are created.
+The agent uses Starter because free dynamic services spin down after an idle window, which is
+incompatible with unattended TxLINE streaming. The browser application has no runtime server
+state, so it is exported to Render's free static CDN and cannot cold-start. The Blueprint is
+still billable and must be approved by the repository owner before resources are created.
+
+At Render's July 2026 list prices, the baseline is approximately **$17.50/month**, prorated:
+$7 for one Starter agent, $6 for Basic-256mb PostgreSQL compute, and $4.50 for 15 GB database
+storage at $0.30/GB. The Hobby workspace and static site are $0. Bandwidth or build overages
+can add cost; verify the provider review screen before approval. See Render's
+[current pricing](https://render.com/pricing) and
+[flexible Postgres storage pricing](https://render.com/docs/postgresql-refresh).
 
 The root [`.node-version`](../.node-version) pins Node.js 24.18.0 LTS and `packageManager`
 pins pnpm 11.9.0. The agent also has a portable multi-stage
@@ -19,14 +27,15 @@ Render's native Node runtime for faster releases.
 
 ## First deployment
 
-1. Push the complete stack through `agent/public-deployment` and confirm its GitHub quality
-   gate is green.
+1. Push the complete stack through `agent/static-web-deployment` and confirm its GitHub
+   quality gate is green.
 2. In Render, create a **Blueprint** from `stunt101harm/lag-shield`, select
-   `agent/public-deployment`, and use the repository-root `render.yaml`.
-3. Review the two Starter web services and Basic PostgreSQL instance, then explicitly approve
-   their recurring cost. Keep all resources in `ohio`; the Blueprint enforces this.
-4. Wait for PostgreSQL, the agent pre-deploy migration, agent `/ready`, and the web `/` health
-   check to become green.
+   `agent/static-web-deployment`, and use the repository-root `render.yaml`.
+3. Review the Starter agent, free static site, and Basic PostgreSQL instance, then explicitly
+   approve the recurring compute/storage cost. The agent and database remain in `ohio`; the
+   static site is distributed globally.
+4. Wait for PostgreSQL, the agent pre-deploy migration, agent `/ready`, and the static-site
+   publish to become green.
 5. Record the generated HTTPS URLs. Do not add a token or wallet value to Git, a build
    command, or a URL.
 
@@ -104,8 +113,8 @@ Open the web URL in a private browser with developer tools visible:
 
 ## Monitoring and failure response
 
-- Render probes agent `/ready` and web `/`; enable deploy-failed and service-unhealthy email
-  notifications for both services.
+- Render probes agent `/ready`; enable agent service-unhealthy plus agent/static-site
+  deploy-failed email notifications.
 - GitHub's hourly read-only smoke provides an independent public-path check.
 - `/metrics/operations`, `/metrics/streams`, `/metrics/proofs`, and structured logs distinguish
   database, TxLINE, Solana RPC, retention, and request failures without secret values.
