@@ -1,5 +1,7 @@
 # LagShield
 
+[![CI](https://github.com/stunt101harm/lag-shield/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/stunt101harm/lag-shield/actions/workflows/ci.yml)
+
 **An autonomous, proof-backed circuit breaker for in-play sports markets, powered by
 TxLINE.**
 
