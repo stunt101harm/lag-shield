@@ -86,14 +86,14 @@ describe('parseAgentEnvironment', () => {
     expect(
       parseAgentEnvironment({
         DATABASE_URL: 'postgresql://localhost/lagshield',
-        PUBLIC_WEB_HOST: 'lagshield-web.onrender.com',
+        PUBLIC_WEB_HOST: 'lag-shield.example.workers.dev',
         TXLINE_API_TOKEN: 'provider-secret-token',
         TXLINE_CREDENTIALS_SOURCE: 'environment',
         TXLINE_LIVE_ENABLED: 'true',
         TXLINE_WALLET_PUBLIC_KEY: '11111111111111111111111111111111',
       }),
     ).toMatchObject({
-      PUBLIC_WEB_HOST: 'lagshield-web.onrender.com',
+      PUBLIC_WEB_HOST: 'lag-shield.example.workers.dev',
       TXLINE_CREDENTIALS_SOURCE: 'environment',
       TXLINE_LIVE_ENABLED: true,
     });

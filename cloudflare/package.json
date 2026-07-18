@@ -1,0 +1,20 @@
+{
+  "name": "@lagshield/cloudflare",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "check": "tsc -p tsconfig.json --noEmit && WRANGLER_LOG_PATH=../.wrangler/logs wrangler deploy --config ../wrangler.jsonc --dry-run --containers-rollout=none --outdir ../.wrangler/dry-run",
+    "deploy": "wrangler deploy --config ../wrangler.jsonc",
+    "lint": "eslint worker.ts --max-warnings=0",
+    "tail": "wrangler tail --config ../wrangler.jsonc",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@cloudflare/containers": "0.3.7"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "5.20260718.1",
+    "wrangler": "4.112.0"
+  }
+}

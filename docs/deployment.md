@@ -1,72 +1,134 @@
 # Public deployment and judge runbook
 
-LagShield deploys from one Render Blueprint into three resources:
+LagShield deploys as one Cloudflare application plus one external PostgreSQL database:
 
-| Resource                       | Render type                | Runtime contract                                                                     |
-| ------------------------------ | -------------------------- | ------------------------------------------------------------------------------------ |
-| `lagshield-agent-stunt101harm` | Starter web service        | One continuously running Fastify/SSE agent, one process owner, `/ready` health check |
-| `lagshield-web-stunt101harm`   | Free global static site    | Exported Next.js command center with the agent hostname embedded at build time       |
-| `lagshield-postgres`           | Basic 256 MB PostgreSQL 17 | Private-network-only database, 15 GB disk, release-time Drizzle migrations           |
+| Resource                              | Runtime contract                                                                    |
+| ------------------------------------- | ----------------------------------------------------------------------------------- |
+| Cloudflare Workers Static Assets      | Globally cached, statically exported Next.js command center                         |
+| Cloudflare Worker                     | Same-origin router, one-minute watchdog, secrets boundary, and Durable Object owner |
+| Cloudflare Container `LagShieldAgent` | One continuously running 1 GiB Node/Fastify agent in Eastern North America          |
+| Neon PostgreSQL                       | Durable event, market, replay, order, receipt, and evaluation state                 |
 
-The agent uses Starter because free dynamic services spin down after an idle window, which is
-incompatible with unattended TxLINE streaming. The browser application has no runtime server
-state, so it is exported to Render's free static CDN and cannot cold-start. The Blueprint is
-still billable and must be approved by the repository owner before resources are created.
+The Worker serves static files without invoking JavaScript, while `/health`, `/ready`,
+`/docs`, `/openapi.json`, `/metrics/*`, and `/v1/*` are proxied to the single named
+container. The web application therefore uses relative same-origin requests; there is no
+second public hostname or cross-origin failure mode.
 
-At Render's July 2026 list prices, the baseline is approximately **$17.50/month**, prorated:
-$7 for one Starter agent, $6 for Basic-256mb PostgreSQL compute, and $4.50 for 15 GB database
-storage at $0.30/GB. The Hobby workspace and static site are $0. Bandwidth or build overages
-can add cost; verify the provider review screen before approval. See Render's
-[current pricing](https://render.com/pricing) and
-[flexible Postgres storage pricing](https://render.com/docs/postgresql-refresh).
+The agent intentionally overrides Cloudflare's idle shutdown hook because it owns unattended
+TxLINE odds and score streams. A Cron Trigger also starts/checks the same named instance every
+minute, so an open browser is never required. `max_instances = 1` preserves the strategy's
+single-writer contract. Container disk is treated as ephemeral; all durable state is in
+PostgreSQL, and migrations run idempotently before every container start.
 
-The root [`.node-version`](../.node-version) pins Node.js 24.18.0 LTS and `packageManager`
-pins pnpm 11.9.0. The agent also has a portable multi-stage
-[`Dockerfile`](../apps/agent/Dockerfile), built by CI even though the primary Blueprint uses
-Render's native Node runtime for faster releases.
+Cloudflare does not provide hosted PostgreSQL. Hyperdrive accelerates an **existing**
+PostgreSQL or MySQL database, while D1 is a different SQLite-based database. Replacing the
+current PostgreSQL store with D1 would require rewriting and re-proving the atomic market lock,
+order gate, replay ownership, and migration behavior. The hackathon deployment therefore uses
+Neon, an officially documented Cloudflare-compatible PostgreSQL provider, through a direct TLS
+connection.
+
+## Cost envelope
+
+The repository selects Cloudflare's `basic` container (1 GiB memory, 1/4 vCPU, 4 GB ephemeral
+disk) for demo stability. At 730 continuously running hours, the provisioned memory and disk
+overage is approximately **$7.03/month** after the Workers Paid included allotments; active CPU,
+Durable Object requests, logs, and unusual network use are variable. The Workers Paid minimum is
+$5/month if the account is not already paid. Static asset requests and asset storage are free.
+
+Neon Free currently includes 100 CU-hours and 0.5 GB per project, which is enough for the
+submission window and seeded demo. Monitor usage and move to Neon Launch if live proof polling or
+event volume approaches those limits. Current source pricing:
+
+- [Cloudflare Containers pricing](https://developers.cloudflare.com/containers/pricing/)
+- [Cloudflare Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
+- [Neon pricing](https://neon.com/pricing)
+
+## Prerequisites
+
+- Cloudflare Workers Paid account with Containers enabled.
+- Docker running locally; Wrangler builds a `linux/amd64` image.
+- A Neon project in an Eastern North America region. Copy its TLS PostgreSQL connection string;
+  never paste it into Git, an issue, or a command argument recorded in shell history.
+- Node.js and pnpm versions pinned by `.node-version` and `packageManager`.
 
 ## First deployment
 
-1. Confirm the complete stack is present on `main` and its GitHub quality gate is green.
-2. In Render, create a **Blueprint** from `stunt101harm/lag-shield`, select
-   `main`, and use the repository-root `render.yaml`.
-3. Review the Starter agent, free static site, and Basic PostgreSQL instance, then explicitly
-   approve the recurring compute/storage cost. The agent and database remain in `ohio`; the
-   static site is distributed globally.
-4. Wait for PostgreSQL, the agent pre-deploy migration, agent `/ready`, and the static-site
-   publish to become green.
-5. Record the generated HTTPS URLs. Do not add a token or wallet value to Git, a build
-   command, or a URL.
+1. Authenticate interactively and confirm the intended Cloudflare account:
 
-The agent boots with `TXLINE_LIVE_ENABLED=false`, persists the hash-addressed seeded manifest
-and evaluation report, and remains fully judge-testable even when no match is live. Enabling
-TxLINE is a separate secret-store operation after the activated subscription is available.
+   ```bash
+   pnpm exec wrangler login
+   pnpm exec wrangler whoami
+   docker info
+   ```
+
+2. Deploy the Worker, static assets, and container definition:
+
+   ```bash
+   pnpm install --frozen-lockfile
+   pnpm cloudflare:check
+   pnpm cloudflare:deploy
+   ```
+
+   Record the generated URL, normally
+   `https://lag-shield.<workers-subdomain>.workers.dev`. The static command center is available
+   immediately; the container will remain unavailable until its required secrets exist and may
+   take several minutes to provision on the first deployment.
+
+3. Add the required runtime secrets using the interactive prompts. Wrangler reads each value
+   without placing it in the repository:
+
+   ```bash
+   pnpm exec wrangler secret put DATABASE_URL
+   pnpm exec wrangler secret put PUBLIC_WEB_ORIGIN
+   ```
+
+   `DATABASE_URL` is the Neon TLS connection string. `PUBLIC_WEB_ORIGIN` is the exact public URL
+   from the previous step, with no trailing slash.
+
+   Rebuild once with the final origin so Open Graph and X card URLs are also exact:
+
+   ```bash
+   NEXT_PUBLIC_LAGSHIELD_WEB_URL=https://lag-shield.<workers-subdomain>.workers.dev \
+   pnpm cloudflare:deploy
+   ```
+
+4. Verify provisioning and the seeded, credential-free mode:
+
+   ```bash
+   pnpm exec wrangler containers list
+   curl -fsS https://lag-shield.<workers-subdomain>.workers.dev/health
+   curl -fsS https://lag-shield.<workers-subdomain>.workers.dev/ready
+   ```
+
+   The entrypoint runs the checked-in Drizzle migrations before starting Fastify, persists the
+   seeded manifest and evaluation report, and remains judge-testable even when no match is live.
 
 ## Enable live TxLINE input
 
-The Blueprint selects `TXLINE_CREDENTIALS_SOURCE=environment`. Add these variables in the
-agent's Render environment settings:
+Add the activated subscription and wallet public key through Worker Secrets:
 
-| Variable                   | Visibility      | Value                                 |
-| -------------------------- | --------------- | ------------------------------------- |
-| `TXLINE_API_TOKEN`         | Secret          | Activated TxLINE subscription token   |
-| `TXLINE_WALLET_PUBLIC_KEY` | Plain or secret | Public key that owns the subscription |
-| `TXLINE_LIVE_ENABLED`      | Plain           | `true` only after both values exist   |
+```bash
+pnpm exec wrangler secret put TXLINE_API_TOKEN
+pnpm exec wrangler secret put TXLINE_WALLET_PUBLIC_KEY
+pnpm exec wrangler secret put TXLINE_LIVE_ENABLED
+```
 
-Keep `TXLINE_NETWORK=devnet` unless the subscription was activated on mainnet. A mismatch
-fails startup. The API token remains provider-managed, is covered by logger redaction, and is
-never included in the browser bundle or public API.
+Enter `true` for `TXLINE_LIVE_ENABLED`. Keep the committed network at `devnet` unless the
+subscription was activated on mainnet. If a dedicated Solana endpoint is needed, also run
+`pnpm exec wrangler secret put TXLINE_RPC_URL`.
 
-After the restart, confirm `/ready` reports credentials/live ingestion as configured and
-`/metrics/streams` reports both independent supervisors. A quiet stream with a successful
-connection is valid; never fabricate activity for the demo.
+After the new version rolls out, `/ready` must report credentials and live ingestion as
+configured, and `/metrics/streams` must show both independent supervisors. A connected, quiet
+stream is valid; never fabricate sports activity. Use `pnpm cloudflare:tail` for secret-redacted
+container and Worker logs.
 
 ## Post-deploy proof
 
-Use the exact agent URL returned by Render:
+Use the single public origin for both variables:
 
 ```bash
-export LAGSHIELD_API_URL=https://lagshield-agent-stunt101harm.onrender.com
+export LAGSHIELD_WEB_URL=https://lag-shield.<workers-subdomain>.workers.dev
+export LAGSHIELD_API_URL="$LAGSHIELD_WEB_URL"
 
 curl -fsS "$LAGSHIELD_API_URL/health"
 curl -fsS "$LAGSHIELD_API_URL/ready"
@@ -76,62 +138,59 @@ pnpm judge:smoke
 
 `load:smoke` performs 100 bounded reads by default. `judge:smoke` performs the state-changing
 proof: seeded replay, `PAUSED`, rejected paper order, automatic recovery to `OPEN`, persisted
-order, and linked receipt retrieval. Save both JSON outputs and a UTC timestamp in the issue
-#15 evidence comment.
+order, and linked receipt retrieval. Save both secret-free JSON outputs and a UTC timestamp in
+issue #15.
 
-Set the repository Actions variable `LAGSHIELD_API_URL` to the agent URL. The
-`Production smoke` workflow then runs 20 read-only checks hourly. Its manual dispatch accepts
-an override URL and an explicit `full_judge_flow` switch; the scheduled job never grows the
-database with replay runs.
+Set the repository Actions variables `LAGSHIELD_API_URL` and `LAGSHIELD_WEB_URL` to the public
+origin. The
+`Production smoke` workflow then runs 20 read-only checks hourly. Its manual dispatch accepts an
+override URL and an explicit `full_judge_flow` switch; the scheduled job never grows the database
+with replay runs.
 
-After the demo video is hosted, run the stricter final gate with the exact public web, agent,
-and video URLs:
+For automatic releases, add GitHub Actions secrets `CLOUDFLARE_ACCOUNT_ID` and
+`CLOUDFLARE_API_TOKEN`, using Cloudflare's account-scoped **Edit Cloudflare Workers** token
+template. Then set the repository variable `CLOUDFLARE_DEPLOY_ENABLED=true`. The deployment
+workflow publishes only a protected `main` revision whose CI workflow passed.
+
+After the demo video is hosted, run the strict final gate:
 
 ```bash
-LAGSHIELD_WEB_URL=https://web.example.com \
-LAGSHIELD_API_URL=https://agent.example.com \
+LAGSHIELD_WEB_URL="$LAGSHIELD_WEB_URL" \
+LAGSHIELD_API_URL="$LAGSHIELD_API_URL" \
 LAGSHIELD_DEMO_VIDEO_URL=https://video.example.com/demo \
 pnpm submission:preflight
 ```
 
-The final run must use no skip variables. It additionally proves exact CORS, connected TxLINE
-odds and score supervisors, enabled proof processing, public documentation/repository/video,
-and the complete state-changing judge flow. Save its secret-free JSON output with the
-submission evidence described in the [five-minute demo runbook](demo-script.md).
+The final run must use no skip variables. It proves exact CORS, connected TxLINE odds and score
+supervisors, enabled proof processing, public documentation/repository/video, and the complete
+state-changing judge flow.
 
 ## Incognito judge check
 
-Open the web URL in a private browser with developer tools visible:
-
-1. Confirm the command center loads without authentication or console/CORS errors.
+1. Confirm the command center loads without authentication or console errors.
 2. Run the seeded story and observe `OPEN → PAUSED → RECOVERY → OPEN` without refreshing.
 3. Submit the paper order during `PAUSED` and confirm `ORDER_REJECTED_PAUSED`.
 4. Open the receipt and confirm exact message IDs/hash plus an honest proof state.
-5. Reload the page and confirm the persisted replay, order, and receipt remain visible.
-6. Open the agent `/docs`, `/ready`, and `/v1/evaluations/seeded` URLs directly.
+5. Reload and confirm the persisted replay, order, and receipt remain visible.
+6. Open `/docs`, `/ready`, and `/v1/evaluations/seeded` directly on the same origin.
 
 ## Monitoring and failure response
 
-- Render probes agent `/ready`; enable agent service-unhealthy plus agent/static-site
-  deploy-failed email notifications.
-- GitHub's hourly read-only smoke provides an independent public-path check.
-- `/metrics/operations`, `/metrics/streams`, `/metrics/proofs`, and structured logs distinguish
-  database, TxLINE, Solana RPC, retention, and request failures without secret values.
-- If `/ready` is red, do not restart repeatedly. Inspect its dependency state and the latest
-  bounded diagnostic first; the seeded UI remains the fallback only when the database is ready.
+- The one-minute Cron Trigger prewarms or restarts the named container; GitHub's hourly smoke is
+  an independent public-path check.
+- `/metrics/operations`, `/metrics/streams`, `/metrics/proofs`, Cloudflare Observability, and
+  structured logs distinguish database, TxLINE, Solana RPC, retention, and request failures.
+- If `/ready` is red, inspect its dependency state and bounded diagnostics before restarting.
+- Use `pnpm exec wrangler containers list` to distinguish image rollout from runtime failure.
+- Neon storage/compute usage and Cloudflare container memory/CPU should have billing alerts.
 
 ## Redeploy and rollback
 
-Every successful push after CI triggers an automatic deploy. The agent build runs
-`pnpm db:migrate` before traffic moves to the new instance; Drizzle records applied migrations,
-so rerunning the release command is safe. Render sends `SIGTERM` and allows up to 60 seconds
-for the agent to drain workers and close PostgreSQL.
+`pnpm cloudflare:deploy` builds the static export, builds/pushes the container, and deploys the
+Worker as one release. The container receives `SIGTERM`; LagShield drains workers, stops both SSE
+readers, and closes PostgreSQL. Migrations are additive and idempotent.
 
-To redeploy, select the last successful commit in the service's Render **Deploys** tab and
-choose **Redeploy**. To roll back application code, choose **Rollback** on the previous healthy
-deploy for both agent and web. Current migrations are additive; never roll back PostgreSQL by
-deleting tables. If a future release requires a destructive schema reversal, restore or fork a
-database backup first and point a separately deployed agent at it.
-
-After any redeploy or rollback, run `pnpm load:smoke`; run `pnpm judge:smoke` once before
-handing the environment back to judges.
+Use Cloudflare's Workers **Deployments** page or Wrangler's deployment commands to roll back the
+Worker version. Container rollouts follow the version and retain PostgreSQL state because local
+disk is never authoritative. Never roll back by deleting tables. After any redeploy or rollback,
+run `pnpm load:smoke`; run `pnpm judge:smoke` once before handing the environment back to judges.

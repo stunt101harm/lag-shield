@@ -1,5 +1,6 @@
 packages:
   - apps/*
+  - cloudflare
   - packages/*
 
 allowBuilds:
@@ -9,10 +10,16 @@ allowBuilds:
   sharp: true
   unrs-resolver: true
   utf-8-validate: false
+  workerd: true
 
 ignoredOptionalDependencies:
   - bufferutil
   - utf-8-validate
+
+minimumReleaseAgeExclude:
+  - '@cloudflare/workers-types@5.20260718.1'
+  - miniflare@4.20260714.0
+  - wrangler@4.112.0
 
 overrides:
   '@esbuild-kit/core-utils>esbuild': 0.25.12
