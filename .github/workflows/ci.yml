@@ -1,0 +1,75 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  quality:
+    name: Quality gates
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    services:
+      postgres:
+        image: postgres:17-alpine
+        env:
+          POSTGRES_DB: lagshield_test
+          POSTGRES_PASSWORD: lagshield
+          POSTGRES_USER: lagshield
+        options: >-
+          --health-cmd "pg_isready -U lagshield -d lagshield_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+        ports:
+          - 5432:5432
+    env:
+      TEST_DATABASE_URL: postgresql://lagshield:lagshield@localhost:5432/lagshield_test
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .node-version
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Run quality gates
+        run: pnpm check
+
+      - name: Audit production dependencies
+        run: pnpm security:audit
+
+      - name: Build portable agent container
+        run: docker build --file apps/agent/Dockerfile --tag lagshield-agent:${{ github.sha }} .
+
+      - name: Install command-center browser
+        run: pnpm --filter @lagshield/web exec playwright install --with-deps chromium
+
+      - name: Run command-center browser and accessibility tests
+        run: pnpm test:e2e
+
+      - name: Upload command-center evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: command-center-evidence
+          path: apps/web/test-results
+          retention-days: 7

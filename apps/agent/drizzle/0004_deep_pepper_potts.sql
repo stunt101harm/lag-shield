@@ -1,0 +1,3 @@
+ALTER TABLE "outcome_quote_observations" ADD COLUMN "probability_encoding" text;--> statement-breakpoint
+ALTER TABLE "outcome_quote_observations" ADD COLUMN "reported_probability_micros" integer;--> statement-breakpoint
+ALTER TABLE "outcome_quote_observations" ADD CONSTRAINT "quotes_reported_probability_check" CHECK ("outcome_quote_observations"."reported_probability_micros" IS NULL OR ("outcome_quote_observations"."reported_probability_micros" >= 0 AND "outcome_quote_observations"."reported_probability_micros" <= 1000000));

@@ -1,0 +1,174 @@
+{
+  "dataMode": "seeded-simulation",
+  "diagnostics": {
+    "convergenceAtMs": 1784311268000,
+    "falsePauseStatus": "indeterminate_unconfirmed",
+    "firstMaterialMoveEventId": "evt_40a53b067b2fed2b6a006e18afcfbbbc540eeb1f",
+    "overlongPauseMs": 0,
+    "pausedAtMs": 1784311260000,
+    "reopenedAtMs": 1784311278000,
+    "signalEventId": "evt_85ef45ff02416bafede0a6b548f0a979a9e7ca15",
+    "signalKind": "goal"
+  },
+  "evaluationVersion": "lagshield-strategy-evaluation-v1",
+  "fixtureId": "seeded-world-cup-canada-japan",
+  "generatedFrom": {
+    "eventSequenceHash": "b22d1650e536d245eaf98b8eb065d543b79b27ed0370b159741b2d6859962a1d",
+    "inputHash": "23c5cf81198498568e59142dff1ef6cac9fcdf05b7be20fedbebd3e2c96017f6",
+    "manifestId": "rplm_f32d358ef3561cd30dc9cec2f2cea5a6818cacb2",
+    "strategyHash": "82e1292a5af7e39d5f663ecb9bcd137fb9072da20f11a5f65cb3c6da44cb4b5d"
+  },
+  "limitations": [
+    "The avoided-price-error value is an absolute probability-distance proxy, not P&L, profit, or causal attribution.",
+    "An unconfirmed event without a later confirmation or reversal remains indeterminate; it is not labelled a false positive.",
+    "Reaction latency is limited to bookmakers and reported probabilities present in the evaluated feed.",
+    "A seeded-simulation report demonstrates deterministic behavior, not historical production performance."
+  ],
+  "metrics": {
+    "avoidedPriceErrorProxy": {
+      "evaluatedOrderCount": 1,
+      "label": "absolute-probability-distance-proxy-not-pnl",
+      "maxErrorMicros": 200000,
+      "meanErrorMicros": 200000,
+      "rejectedOrderCount": 1
+    },
+    "bookmakerReactionLatencies": [
+      {
+        "bookmakerId": "consensus",
+        "firstReactionEventId": "evt_40a53b067b2fed2b6a006e18afcfbbbc540eeb1f",
+        "latencyMs": 8000
+      }
+    ],
+    "eventToFirstConsensusMoveLatencyMs": 8000,
+    "flappingCount": 0,
+    "maxBookmakerReactionLatencyMs": 8000,
+    "normalPlayControl": {
+      "decisionCount": 1,
+      "durationMs": 59000,
+      "restrictiveTransitionCount": 0
+    },
+    "pauseDurationMs": 12000,
+    "protectiveSignalCount": 1,
+    "staleExposureDurationMs": 8000,
+    "stateTransitionCount": 3,
+    "stateTransitionCounts": {
+      "OPEN->PAUSED": 1,
+      "PAUSED->RECOVERY": 1,
+      "RECOVERY->OPEN": 1
+    },
+    "timeToReopenMs": 18000
+  },
+  "parameters": {
+    "convergenceToleranceMicros": 5000,
+    "convergenceWindowMs": 10000,
+    "materialMoveThresholdMicros": 50000,
+    "overlongPauseGraceMs": 5000
+  },
+  "policy": {
+    "configuration": {
+      "criticalShockHoldMs": 8000,
+      "minimumFreshBookmakers": 1,
+      "minimumPauseMs": 2000,
+      "minimumWidenedMs": 2000,
+      "pauseDispersionMicros": 50000,
+      "pauseQuoteAgeMs": 5000,
+      "pauseReactionLatencyMs": 4000,
+      "pauseStaleBookmakerFractionPpm": 500000,
+      "pauseVelocityMicrosPerSecond": 60000,
+      "recoveryCooldownMs": 3000,
+      "recoveryDispersionMicros": 15000,
+      "recoveryQuoteAgeMs": 1500,
+      "recoveryStableUpdates": 3,
+      "recoveryStaleBookmakerFractionPpm": 0,
+      "recoveryVelocityMicrosPerSecond": 10000,
+      "reversalShockHoldMs": 2000,
+      "widenDispersionMicros": 20000,
+      "widenQuoteAgeMs": 2000,
+      "widenReactionLatencyMs": 1500,
+      "widenStaleBookmakerFractionPpm": 250000,
+      "widenVelocityMicrosPerSecond": 20000
+    },
+    "configurationHash": "f807f4f5396190944732aa7f944c0223368546e6f35c01bcf2dceb5f189d441b",
+    "version": "lag-shield-soccer-risk-v1"
+  },
+  "sensitivity": [
+    {
+      "changedParameters": {
+        "recoveryStableUpdates": 4
+      },
+      "evaluationHash": "c631a63d73547fcbd7e07e2e0b3fabfd146923948db67edb867b0553b0754e15",
+      "finalState": "RECOVERY",
+      "flappingCount": 0,
+      "label": "conservative-recovery-4-updates",
+      "pauseDurationMs": 12000,
+      "timeToReopenMs": null
+    },
+    {
+      "changedParameters": {
+        "recoveryStableUpdates": 2
+      },
+      "evaluationHash": "b515d3ab761a88d8efb2e13062a5ca1de09fb0c1f15337528e8e96fb4aa35ebf",
+      "finalState": "OPEN",
+      "flappingCount": 0,
+      "label": "faster-recovery-2-updates",
+      "pauseDurationMs": 12000,
+      "timeToReopenMs": 15000
+    },
+    {
+      "changedParameters": {
+        "criticalShockHoldMs": 16000
+      },
+      "evaluationHash": "9570bb3888c8e30a5e63266b0aa1c1b5eda2895bad8b9b4d28f90917f106796d",
+      "finalState": "RECOVERY",
+      "flappingCount": 0,
+      "label": "longer-critical-hold-16s",
+      "pauseDurationMs": 18000,
+      "timeToReopenMs": null
+    }
+  ],
+  "timeline": [
+    {
+      "atMs": 1784311201000,
+      "eventId": "cns_22fcdd808b97940faf701f791a672eec7b0c9aa1",
+      "kind": "normal_control_started",
+      "label": "Normal-play control window opened with a ready consensus."
+    },
+    {
+      "atMs": 1784311260000,
+      "eventId": "dec_184555e67655b6b205f5a159169b43f7be032fa1",
+      "kind": "market_paused",
+      "label": "Deterministic policy entered PAUSED."
+    },
+    {
+      "atMs": 1784311260000,
+      "eventId": "evt_85ef45ff02416bafede0a6b548f0a979a9e7ca15",
+      "kind": "protective_signal",
+      "label": "goal signal observed."
+    },
+    {
+      "atMs": 1784311263000,
+      "eventId": "ord_397988f2f810ee8d4bf2f612abb6410d1ff9b6f4",
+      "kind": "paper_order_rejected",
+      "label": "A simulated paper order was rejected; no real money was involved."
+    },
+    {
+      "atMs": 1784311268000,
+      "eventId": "evt_40a53b067b2fed2b6a006e18afcfbbbc540eeb1f",
+      "kind": "consensus_moved",
+      "label": "Consensus crossed the configured material-move threshold."
+    },
+    {
+      "atMs": 1784311268000,
+      "eventId": "evt_40a53b067b2fed2b6a006e18afcfbbbc540eeb1f",
+      "kind": "consensus_converged",
+      "label": "Post-event consensus began the stable convergence window."
+    },
+    {
+      "atMs": 1784311278000,
+      "eventId": "dec_05376ceb8ad627b07cf50c29cc56fb824cdb9efc",
+      "kind": "market_reopened",
+      "label": "Recovery quorum reopened the simulated market."
+    }
+  ],
+  "evaluationHash": "867f36f2180a5dd54ebced5025350f1b22d103cee882716dc2a2444283ac748f"
+}

@@ -1,0 +1,102 @@
+services:
+  - type: web
+    runtime: node
+    name: lagshield-agent-stunt101harm
+    branch: main
+    region: ohio
+    plan: starter
+    numInstances: 1
+    autoDeployTrigger: checksPass
+    buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @lagshield/agent... build
+    preDeployCommand: pnpm db:migrate
+    startCommand: node apps/agent/dist/server.js
+    healthCheckPath: /ready
+    maxShutdownDelaySeconds: 60
+    buildFilter:
+      paths:
+        - apps/agent/**
+        - packages/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - tsconfig.base.json
+        - .node-version
+    envVars:
+      - key: NODE_VERSION
+        value: 24.18.0
+      - key: NODE_ENV
+        value: production
+      - key: HOST
+        value: 0.0.0.0
+      - key: LOG_LEVEL
+        value: info
+      - key: DATABASE_URL
+        fromDatabase:
+          name: lagshield-postgres
+          property: connectionString
+      - key: PUBLIC_WEB_HOST
+        fromService:
+          type: web
+          name: lagshield-web-stunt101harm
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+      - key: TXLINE_NETWORK
+        value: devnet
+      - key: TXLINE_CREDENTIALS_SOURCE
+        value: environment
+      - key: TXLINE_LIVE_ENABLED
+        value: 'false'
+
+  - type: web
+    runtime: static
+    name: lagshield-web-stunt101harm
+    branch: main
+    autoDeployTrigger: checksPass
+    buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @lagshield/web... build
+    staticPublishPath: ./apps/web/out
+    buildFilter:
+      paths:
+        - apps/web/**
+        - packages/core/**
+        - package.json
+        - pnpm-lock.yaml
+        - pnpm-workspace.yaml
+        - turbo.json
+        - tsconfig.base.json
+        - .node-version
+    envVars:
+      - key: NODE_VERSION
+        value: 24.18.0
+      - key: NODE_ENV
+        value: production
+      - key: NEXT_PUBLIC_LAGSHIELD_API_HOST
+        fromService:
+          type: web
+          name: lagshield-agent-stunt101harm
+          envVarKey: RENDER_EXTERNAL_HOSTNAME
+    headers:
+      - path: /*
+        name: X-Frame-Options
+        value: DENY
+      - path: /*
+        name: X-Content-Type-Options
+        value: nosniff
+      - path: /*
+        name: Referrer-Policy
+        value: no-referrer
+      - path: /*
+        name: Permissions-Policy
+        value: camera=(), geolocation=(), microphone=()
+      - path: /*
+        name: Content-Security-Policy
+        value: default-src 'self'; connect-src 'self' https://*.onrender.com; img-src 'self' data:; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; font-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'none'
+
+databases:
+  - name: lagshield-postgres
+    databaseName: lagshield
+    user: lagshield
+    region: ohio
+    plan: basic-256mb
+    diskSizeGB: 15
+    postgresMajorVersion: '17'
+    ipAllowList: []

@@ -1,0 +1,44 @@
+{
+  "name": "@lagshield/agent",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "tsc -p tsconfig.build.json",
+    "db:check": "drizzle-kit check --config=drizzle.config.ts",
+    "db:generate": "drizzle-kit generate --config=drizzle.config.ts",
+    "db:migrate": "drizzle-kit migrate --config=drizzle.config.ts",
+    "db:studio": "drizzle-kit studio --config=drizzle.config.ts",
+    "dev": "tsx watch src/server.ts",
+    "evaluation:seeded": "node --import tsx src/evaluation/seeded-evaluation-cli.ts",
+    "lint": "eslint . --max-warnings=0",
+    "judge:smoke": "node --import tsx src/smoke/judge-api-smoke.ts",
+    "load:smoke": "node --import tsx src/smoke/public-api-load-smoke.ts",
+    "replay:hydrate": "node --import tsx src/replay/historical-replay-cli.ts",
+    "replay:seeded": "node --import tsx src/replay/seeded-demo-cli.ts",
+    "start": "node dist/server.js",
+    "submission:preflight": "node --import tsx src/smoke/submission-preflight.ts",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@fastify/cors": "^11.3.0",
+    "@fastify/rate-limit": "^11.1.0",
+    "@fastify/swagger": "^9.8.1",
+    "@fastify/swagger-ui": "^6.1.0",
+    "@lagshield/core": "workspace:*",
+    "@lagshield/shared": "workspace:*",
+    "@lagshield/txline": "workspace:*",
+    "@solana/web3.js": "^1.98.4",
+    "dotenv": "^17.4.2",
+    "drizzle-orm": "^0.45.2",
+    "fastify": "^5.10.0",
+    "postgres": "^3.4.9",
+    "zod": "^4.3.6"
+  },
+  "devDependencies": {
+    "drizzle-kit": "^0.31.10",
+    "tsx": "^4.23.1"
+  }
+}
