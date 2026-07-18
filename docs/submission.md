@@ -149,6 +149,7 @@ Swagger UI is `https://AGENT_HOST/docs`; the machine-readable contract is
 - [Consensus formulas and units](market-consensus.md)
 - [Receipt and Solana proof contract](proof-verification.md)
 - [Judge API and realtime controls](agent-api.md)
+- [Five-minute demo and final preflight](demo-script.md)
 - [Deployment and operations](deployment.md)
 - [TxLINE integration feedback](txline-feedback.md)
 

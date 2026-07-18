@@ -17,6 +17,7 @@
     "replay:hydrate": "node --import tsx src/replay/historical-replay-cli.ts",
     "replay:seeded": "node --import tsx src/replay/seeded-demo-cli.ts",
     "start": "node dist/server.js",
+    "submission:preflight": "node --import tsx src/smoke/submission-preflight.ts",
     "test": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc -p tsconfig.json --noEmit"

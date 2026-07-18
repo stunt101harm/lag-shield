@@ -74,6 +74,34 @@ async function waitForSnapshot(
   );
 }
 
+async function stopActiveReplay(baseUrl: string): Promise<void> {
+  const path = '/v1/replays/active';
+  const response = await fetch(`${baseUrl}${path}`, {
+    headers: { Accept: 'application/json' },
+    signal: AbortSignal.timeout(5_000),
+  });
+  const body = (await response.json()) as unknown;
+  if (response.status === 404) return;
+  if (!response.ok) {
+    throw new Error(`GET ${path} returned ${response.status}: ${JSON.stringify(body)}`);
+  }
+  const active = replaySnapshotSchema.parse(body);
+  if (['running', 'paused'].includes(active.run.status)) {
+    await requestJson(
+      baseUrl,
+      `/v1/replays/${encodeURIComponent(active.run.runId)}/actions`,
+      {
+        body: JSON.stringify({ action: 'stop' }),
+        method: 'POST',
+      },
+    );
+  } else if (active.run.status === 'pending') {
+    throw new Error(
+      `Active replay ${active.run.runId} is still pending; retry preflight.`,
+    );
+  }
+}
+
 export async function runJudgeApiSmoke(
   baseUrl = process.env.LAGSHIELD_API_URL ?? 'http://127.0.0.1:4000',
 ): Promise<
@@ -89,6 +117,7 @@ export async function runJudgeApiSmoke(
   const normalizedBaseUrl = baseUrl.replace(/\/$/, '');
   await requestJson(normalizedBaseUrl, '/health');
   await requestJson(normalizedBaseUrl, '/ready');
+  await stopActiveReplay(normalizedBaseUrl);
 
   const runId = `judge-smoke-${Date.now()}`;
   await requestJson(normalizedBaseUrl, '/v1/replays/seeded', {

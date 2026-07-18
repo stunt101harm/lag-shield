@@ -167,6 +167,7 @@ Read the [production-readiness fault model](docs/production-readiness.md),
 - [Live TxLINE ingestion and recovery](docs/live-ingestion.md)
 - [Historical hydration and replay](docs/historical-replay.md)
 - [Judge API, realtime SSE, and smoke flow](docs/agent-api.md)
+- [Five-minute demo script and strict submission preflight](docs/demo-script.md)
 - [Security policy](SECURITY.md) and [contribution guide](CONTRIBUTING.md)
 
 ## License

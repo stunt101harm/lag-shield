@@ -20,6 +20,9 @@ exact HTTPS CORS allowlist.
 
 ## Five-minute demo path
 
+The exact timed narration, capture settings, claim guardrails, hosting copy, and final
+public-link checks live in the [demo and submission preflight](demo-script.md).
+
 1. Open the command center. When no match is live, the honest standby state points to the
    seeded scenario.
 2. Leave replay speed at **2× demo** and select **Run winning demo**.

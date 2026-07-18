@@ -350,15 +350,22 @@ export default function HomePage() {
   };
 
   const startReplay = () =>
-    runAction('start', () =>
-      readJson('/v1/replays/seeded', {
+    runAction('start', async () => {
+      if (snapshot && ['running', 'paused'].includes(snapshot.run.status)) {
+        await readJson(`/v1/replays/${encodeURIComponent(snapshot.run.runId)}/actions`, {
+          body: JSON.stringify({ action: 'stop' }),
+          method: 'POST',
+        });
+      }
+      setOrderResult(null);
+      return readJson('/v1/replays/seeded', {
         body: JSON.stringify({
           runId: `demo-${Date.now()}`,
           speed: speed === 'maximum' ? 'maximum' : Number(speed),
         }),
         method: 'POST',
-      }),
-    );
+      });
+    });
 
   const controlReplay = (action: 'pause' | 'resume' | 'stop') => {
     if (!snapshot) return Promise.resolve();

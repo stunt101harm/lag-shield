@@ -299,7 +299,10 @@ export class ReplayControlService {
   }
 
   snapshot(runId: string): ControlledReplaySnapshot {
-    const active = this.#requireActive(runId);
+    return this.#snapshotActive(this.#requireActive(runId));
+  }
+
+  #snapshotActive(active: ActiveReplay): ControlledReplaySnapshot {
     return {
       consensus: active.consensus,
       currentEvent: active.currentEvent,
@@ -313,7 +316,7 @@ export class ReplayControlService {
   }
 
   activeSnapshot(): ControlledReplaySnapshot | null {
-    return this.#active ? this.snapshot(this.#active.run.runId) : null;
+    return this.#active ? this.#snapshotActive(this.#active) : null;
   }
 
   async #execute(active: ActiveReplay): Promise<void> {
@@ -359,13 +362,13 @@ export class ReplayControlService {
           'Deterministic replay failed closed',
         );
         this.#realtime.publish('replay.status', {
-          ...this.snapshot(active.run.runId),
+          ...this.#snapshotActive(active),
           error: error instanceof Error ? error.message : 'Unknown replay error.',
         });
         return;
       }
     }
-    this.#realtime.publish('replay.status', this.snapshot(active.run.runId));
+    this.#realtime.publish('replay.status', this.#snapshotActive(active));
   }
 
   #requireActive(runId: string): ActiveReplay {

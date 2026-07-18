@@ -27,6 +27,7 @@
     "replay:seeded": "pnpm --filter @lagshield/agent replay:seeded",
     "security:audit": "pnpm audit --prod --audit-level high",
     "security:scan": "node scripts/scan-secrets.mjs",
+    "submission:preflight": "pnpm --filter @lagshield/agent submission:preflight",
     "replay:hydrate": "pnpm --filter @lagshield/agent replay:hydrate",
     "test": "turbo run test",
     "test:e2e": "pnpm --filter @lagshield/web test:e2e",

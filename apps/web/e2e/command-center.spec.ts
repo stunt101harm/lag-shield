@@ -128,7 +128,12 @@ async function installAgentMock(page: Page) {
     }
     if (path === '/v1/replays/seeded' && request.method() === 'POST') {
       started = true;
+      recovered = false;
       return json(route, snapshot('PAUSED'), 202);
+    }
+    if (path.endsWith('/actions') && request.method() === 'POST') {
+      started = false;
+      return json(route, { run: { status: 'stopped' } });
     }
     if (path === '/v1/decisions') return json(route, { items: [decision] });
     if (path === '/v1/decision-receipts') {
@@ -214,6 +219,10 @@ test('runs the judge story without a browser refresh', async ({ page }) => {
   ).toBeVisible();
   await expect(page.getByText('possible goal')).toBeVisible();
   await expect(page.getByText('pending').first()).toBeVisible();
+
+  await page.getByRole('button', { name: 'Run scenario again' }).click();
+  await expect(page.getByRole('heading', { level: 1 })).toHaveText('PAUSED');
+  await expect(page.getByText('3 / 8')).toBeVisible();
 
   if (process.env.CAPTURE_DOCS_SCREENSHOT === '1') {
     await page.screenshot({

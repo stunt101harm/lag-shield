@@ -76,6 +76,21 @@ Set the repository Actions variable `LAGSHIELD_API_URL` to the agent URL. The
 an override URL and an explicit `full_judge_flow` switch; the scheduled job never grows the
 database with replay runs.
 
+After the demo video is hosted, run the stricter final gate with the exact public web, agent,
+and video URLs:
+
+```bash
+LAGSHIELD_WEB_URL=https://web.example.com \
+LAGSHIELD_API_URL=https://agent.example.com \
+LAGSHIELD_DEMO_VIDEO_URL=https://video.example.com/demo \
+pnpm submission:preflight
+```
+
+The final run must use no skip variables. It additionally proves exact CORS, connected TxLINE
+odds and score supervisors, enabled proof processing, public documentation/repository/video,
+and the complete state-changing judge flow. Save its secret-free JSON output with the
+submission evidence described in the [five-minute demo runbook](demo-script.md).
+
 ## Incognito judge check
 
 Open the web URL in a private browser with developer tools visible:

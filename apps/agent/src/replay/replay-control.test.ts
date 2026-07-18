@@ -172,4 +172,20 @@ describe('ReplayControlService', () => {
       test.service.startSeeded({ runId: 'first', speed: 'maximum' }),
     ).rejects.toThrow('already exists');
   });
+
+  it('can replace a stopped active replay without the old runner publishing through the new owner', async () => {
+    const test = harness({ held: true });
+    await test.service.startSeeded({ runId: 'first', speed: 1 });
+    await waitFor(() => test.service.snapshot('first').progress === 1);
+    await test.service.control('first', 'stop');
+
+    await test.service.startSeeded({ runId: 'second', speed: 'maximum' });
+    await waitFor(() => test.service.snapshot('second').run.status === 'completed');
+
+    expect(test.service.activeSnapshot()).toMatchObject({
+      progress: 8,
+      run: { runId: 'second', status: 'completed' },
+    });
+    expect(test.replayStore.runs.get('first')).toMatchObject({ status: 'stopped' });
+  });
 });
