@@ -27,10 +27,9 @@ Render's native Node runtime for faster releases.
 
 ## First deployment
 
-1. Push the complete stack through `agent/static-web-deployment` and confirm its GitHub
-   quality gate is green.
+1. Confirm the complete stack is present on `main` and its GitHub quality gate is green.
 2. In Render, create a **Blueprint** from `stunt101harm/lag-shield`, select
-   `agent/static-web-deployment`, and use the repository-root `render.yaml`.
+   `main`, and use the repository-root `render.yaml`.
 3. Review the Starter agent, free static site, and Basic PostgreSQL instance, then explicitly
    approve the recurring compute/storage cost. The agent and database remain in `ohio`; the
    static site is distributed globally.

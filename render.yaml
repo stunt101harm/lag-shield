@@ -2,7 +2,7 @@ services:
   - type: web
     runtime: node
     name: lagshield-agent-stunt101harm
-    branch: agent/static-web-deployment
+    branch: main
     region: ohio
     plan: starter
     numInstances: 1
@@ -50,7 +50,7 @@ services:
   - type: web
     runtime: static
     name: lagshield-web-stunt101harm
-    branch: agent/static-web-deployment
+    branch: main
     autoDeployTrigger: checksPass
     buildCommand: corepack enable && corepack prepare pnpm@11.9.0 --activate && pnpm install --frozen-lockfile && pnpm --filter @lagshield/web... build
     staticPublishPath: ./apps/web/out
